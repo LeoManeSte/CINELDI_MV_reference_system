@@ -2,11 +2,6 @@ from math import exp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from math import exp
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def make_load_profile_ewh(time_steps,P,T,S,T_a,C,R,T_min,T_max, P_m,t_act,S_act):
     """
     Generate load time series for electric water heater (EWH).
@@ -301,7 +296,7 @@ def plot_flexibility_activation(result):
         plt.axvline(t_act, color="red", linestyle="--", label="Activation start")
 
     plt.xlabel("Minutes")
-    plt.ylabel("Δ Power (kW)")
+    plt.ylabel("Power Capacity (kW)")
     plt.title("Flexibility activation incl. rebound effect")
     plt.legend()
     plt.grid(True)
@@ -374,21 +369,21 @@ def quantify_capacity_flexibility(t_act_values, **kwargs):
 
     return results
 
-#t_act_values = [200, 400, 600, 800, 1000, 1200]  # 13:20, 16:00, 18:20
-#results = quantify_capacity_flexibility(
-#    t_act_values,
-#    P_m=2.0,
-#    T_a=24.0,
-#    T_min=70.0,
-#    T_max=75.0,
-#    C=0.335,
-#    R=600.0,
-#    T_init_single=73.0,
-#    S_init=0,
-#    P_init=0.0,
-#    time_steps=24*60,
-#    seed=123
-#)
+t_act_values = [200, 400, 600, 800, 1000, 1200]  # 13:20, 16:00, 18:20
+results = quantify_capacity_flexibility(
+    t_act_values,
+    P_m=2.0,
+    T_a=24.0,
+    T_min=70.0,
+    T_max=75.0,
+    C=0.335,
+    R=600.0,
+    T_init_single=73.0,
+    S_init=0,
+    P_init=0.0,
+    time_steps=24*60,
+    seed=123
+)
 
 # --- Eksempelkjøring ---
 #result = simulate_ewh(
@@ -409,26 +404,26 @@ def quantify_capacity_flexibility(t_act_values, **kwargs):
 #    plot=True
 #)
 
-result = simulate_ewh(
-    P_m=2.0,
-    T_a=24.0,
-    T_min=70.0,
-    T_max=75.0,
-    C=0.335,
-    R=600.0,
-    T_init_single=73.0,
-    S_init=0,
-    P_init=0.0,
-    t_act=780,      # Aktivering 13:00
-    S_act=0,        # Slå av
-    time_steps=24*60,
-    N_EWH=1,
-    seed=42,
-    plot=True
-)
-
+#result = simulate_ewh(
+#    P_m=2.0,
+#    T_a=24.0,
+#    T_min=70.0,
+#    T_max=75.0,
+#    C=0.335,
+#    R=600.0,
+#    T_init_single=73.0,
+#    S_init=0,
+#    P_init=0.0,
+#    t_act=200,      # Aktivering 13:00
+#    S_act=1,        # Slå av
+#    time_steps=24*60,
+#    N_EWH=1,
+#    seed=42,
+#    plot=True
+#)
+#
 #analyze_shift(result)
-
+#
 #plot_flexibility_activation(result)
 #### # Exercise questions:
 
@@ -478,20 +473,20 @@ result = simulate_ewh(
 #)
 
 
-#result = simulate_ewh(
-#    P_m=2.0,
-#    T_a=24.0,
-#    T_min=70.0,
-#    T_max=75.0,
-#    C=0.335,
-#    R=600.0,
-#    T_init_single=73.0,
-#    S_init=0,
-#    P_init=0.0,
-#    t_act=None,      # Activate flexibility at 13:00
-#    S_act=None,        # Slå av
-#    time_steps=24*60,
-#    N_EWH=100,
-#    seed=123,
-#    plot=True
-#)
+result = simulate_ewh(
+    P_m=2.0,
+    T_a=24.0,
+    T_min=70.0,
+    T_max=75.0,
+    C=0.335,
+    R=600.0,
+    T_init_single=73.0,
+    S_init=0,
+    P_init=0.0,
+    t_act=300,      # Activate flexibility at 13:00
+    S_act=0,        # Slå av
+    time_steps=24*60,
+    N_EWH=100,
+    seed=123,
+    plot=True
+)

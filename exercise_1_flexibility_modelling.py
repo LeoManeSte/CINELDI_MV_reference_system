@@ -101,11 +101,11 @@ P = 0
 
 # Time of flexibility activation (minutes from start time); 
 # set to None to disable flexibility activation
-t_act = None
+t_act = 779
 
 # EWH activation signal that sets the status of the EWHs after activating flexibility; 
 # 1 turns all EWHs on; 0 turns all EWHs off; set to None to disable flexibility activation
-S_act = None
+S_act = 0
 
 # Number of time steps (minutes)
 time_steps = 24*60
