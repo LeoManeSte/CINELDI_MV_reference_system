@@ -303,15 +303,31 @@ def plot_flexibility_activation(result):
     plt.tight_layout()
     plt.show()
 
-def quantify_capacity_flexibility(t_act_values, **kwargs):
+import math
+import matplotlib.pyplot as plt
+import numpy as np
+
+import math
+import matplotlib.pyplot as plt
+import numpy as np
+
+def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
     """
     Run simulations for different activation times and quantify
     the power capacity flexibility of EWHs.
+
+    For each t_act, two plots are generated:
+    - ΔP over time
+    - Baseline vs flexible load
+
+    The plots are arranged in a grid (2 subplots per t_act).
 
     Parameters
     ----------
     t_act_values : list of ints
         Activation times in minutes.
+    ncols : int
+        Number of subplot columns (default=2).
     kwargs : dict
         Extra parameters for simulate_ewh.
 
@@ -323,9 +339,18 @@ def quantify_capacity_flexibility(t_act_values, **kwargs):
 
     results = {}
 
-    plt.figure(figsize=(10, 6))
+    # Color cycle for consistency
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    for t_act in t_act_values:
+    n_plots = len(t_act_values) * 2   # 2 subplot per t_act
+    nrows = math.ceil(n_plots / ncols)
+
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(6*ncols, 4*nrows), sharex=False
+    )
+    axes = np.array(axes).reshape(-1)  # flatten til liste
+
+    for idx, t_act in enumerate(t_act_values):
         result = simulate_ewh(
             t_act=t_act,
             S_act=0,         # turn OFF
@@ -354,22 +379,37 @@ def quantify_capacity_flexibility(t_act_values, **kwargs):
             "P_flex": P_flex
         }
 
-        # Plot curves
-        #plt.plot(P_base, "k--", alpha=0.5, label="Baseline" if t_act==t_act_values[0] else "")
-        #plt.plot(P_flex, label=f"Flex, t_act={t_act} min")
-        # plot deltaP
-        plt.plot(deltaP, label=f"Delta, t_act={t_act} min")
+        c = color_cycle[idx % len(color_cycle)]
 
-    plt.xlabel("Minutes")
-    plt.ylabel("Power Capacity (kW)")
-    plt.title("Load time series with baseline and flexible operation")
-    plt.legend()
-    plt.grid(True)
+        # --- subplot for ΔP ---
+        ax1 = axes[2*idx]
+        ax1.plot(deltaP, label=f"ΔP (t_act={t_act} min)", color=c)
+        ax1.set_ylabel("ΔP (kW)")
+        ax1.set_title(f"Load reduction (t_act={t_act} min)")
+        ax1.grid(True)
+        ax1.legend()
+
+        # --- subplot for baseline + flex ---
+        ax2 = axes[2*idx + 1]
+        ax2.plot(P_base, color='black',linestyle = ":", alpha=1, label="Baseline")
+        ax2.plot(P_flex, color=c, label=f"Flex (t_act={t_act} min)")
+        ax2.set_ylabel("Power (kW)")
+        ax2.set_title(f"Baseline vs flexible load (t_act={t_act} min)")
+        ax2.grid(True)
+        ax2.legend()
+
+    # Fjern tomme ruter hvis n_plots < nrows*ncols
+    for j in range(n_plots, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
     plt.show()
 
     return results
 
-t_act_values = [200, 400, 600, 800, 1000, 1200]  # 13:20, 16:00, 18:20
+
+t_act_values = [320, 580, 900]  # 13:20, 16:00, 18:20
+
 results = quantify_capacity_flexibility(
     t_act_values,
     P_m=2.0,
@@ -473,20 +513,3 @@ results = quantify_capacity_flexibility(
 #)
 
 
-result = simulate_ewh(
-    P_m=2.0,
-    T_a=24.0,
-    T_min=70.0,
-    T_max=75.0,
-    C=0.335,
-    R=600.0,
-    T_init_single=73.0,
-    S_init=0,
-    P_init=0.0,
-    t_act=300,      # Activate flexibility at 13:00
-    S_act=0,        # Slå av
-    time_steps=24*60,
-    N_EWH=100,
-    seed=123,
-    plot=True
-)
