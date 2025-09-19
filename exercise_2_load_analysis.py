@@ -57,7 +57,8 @@ load_profiles = lp.load_profiles(filename_load_data_fullpath)
 
 
 # Get all the days of the year
-repr_days = list(range(1,366))
+#repr_days = list(range(1,366))
+repr_days = list(range(1, 366))
 
 # Get normalized load profiles for representative days mapped to buses of the CINELDI reference grid;
 # the column index is the bus number (1-indexed) and the row index is the hour of the year (0-indexed)
@@ -104,7 +105,32 @@ plt.ylabel('Load demand (MW)')
 plt.title('Load time series for load points in the grid area')
 plt.legend()
 plt.grid()
-#plt.show()
+plt.show()
+
+
+def make_load_profile(load_sum, P_lim):
+    """
+    Sums up load for each time step and sort it in descending order. 
+    Plots the load profile in MW as a function of the number of hours in the year.
+    """
+    load_sum_sorted = np.sort(load_sum)[::-1]
+    hours = np.arange(1, len(load_sum_sorted)+1)
+    
+    plt.figure(figsize=(10,6))
+    plt.plot(hours, load_sum_sorted, label='Load profile')
+    plt.plot(hours, np.ones(len(hours))*P_lim, 'r--', label='Power flow limit')
+    plt.xlabel('Number of hours in the year')
+    plt.ylabel('Load demand (MW)')
+    plt.title('Load profile for load points in the grid area')
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    return load_sum_sorted
+
+
+
+load_sum_sorted = make_load_profile(load_sum, P_lim)
 
 
 
