@@ -63,7 +63,6 @@ net = ppcsv.read_net_from_csv(path_data_set, baseMVA=10)
 
 load_profiles = lp.load_profiles(filename_load_data_fullpath)
 
-
 # Get all the days of the year
 repr_days = list(range(1, 366))
 
@@ -123,68 +122,135 @@ def plot_voltage_profile(net):
     ax.set_title(f"Voltage profile along longest feeder to {end_name}")
     ax.grid()
     ax.legend()
-    ax.set_ylim(0.9, 1.0)
+    ax.set_ylim(0.92, 1.02)
     plt.tight_layout()
     plt.show()
 
-def plot_area_load_time_series(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim, i_time_series_new_load):
+import matplotlib.cm as cm
+
+import matplotlib.cm as cm
+
+import matplotlib.cm as cm
+
+def plot_area_load_time_series(load_time_series_mapped, 
+                               bus_i_subset, 
+                               new_load_time_series, 
+                               P_lim, 
+                               i_time_series_new_load, 
+                               which_plots=("buses", "new_load", "total", "smooth")):
     """
-    Plotter lasttidserier for utvalgte busser i området + ny last, total last og glattet total last.
+    Plot load time series for selected buses in the area + new load, total load, 
+    and smoothed total load, in separate subplots. 
+    Each curve gets a unique color.
     
-    Parametre
-    ---------
-    load_time_series_mapped : DataFrame
-        Lasttidserier (MW) for alle busser i nettet.
-    bus_i_subset : list
-        Liste med buss-IDer i området som skal plottes (f.eks. [90, 91, 92, 96]).
-    new_load_time_series : array-like
-        Tidsserie for den nye lasten i området (MW).
-    P_lim : float
-        Effektgrense for området (MW).
-    i_time_series_new_load : int
-        ID til tidsserien for den nye lasten (for etikett i plottet).
-    
-    Returnerer
-    ----------
-    load_sum : ndarray
-        Summen av lastene i området (inkl. ny last), per time.
-    load_sum_smooth : ndarray
-        Glattet tidsserie for total last.
+    'total' plot is always placed at the top if selected.
     """
-    plt.figure(figsize=(10,6))
+    # --- ensure "total" is plotted first if present
+    ordered_plots = []
+    if "total" in which_plots:
+        ordered_plots.append("total")
+    for key in ["buses", "new_load", "smooth"]:
+        if key in which_plots:
+            ordered_plots.append(key)
+
+    # count how many subplots
+    n_plots = 0
+    if "buses" in ordered_plots:
+        n_plots += len(bus_i_subset)
+    if "new_load" in ordered_plots:
+        n_plots += 1
+    if "total" in ordered_plots:
+        n_plots += 1
+    if "smooth" in ordered_plots:
+        n_plots += 1
+
+    fig, axes = plt.subplots(n_plots, 1, figsize=(12, 2*n_plots), sharex=True)
+    if n_plots == 1:
+        axes = [axes]  # make axes always a list
+
+    plot_idx = 0
     load_sum = np.zeros(8760)
-    
-    # Plott eksisterende laster
-    for bus_i in bus_i_subset:
-        plt.plot(load_time_series_mapped[bus_i], label=f'Bus {bus_i}')
-        load_sum += load_time_series_mapped[bus_i].to_numpy()
-    
-    # Plott ny last
-    plt.plot(new_load_time_series, '--', label=f'New load (bus {i_time_series_new_load})')
-    load_sum += new_load_time_series
-    
-    # Total last
-    plt.plot(load_sum, 'k', label='Total load in area')
-    
-    # Glatt total last
-    window_size = 10*24
-    window = np.ones(window_size) / window_size
-    pad_width = window_size // 2
-    load_sum_padded = np.pad(load_sum, pad_width, mode='reflect')
-    load_sum_smooth = np.convolve(load_sum_padded, window, mode='valid')
-    
-    plt.plot(load_sum_smooth, color='cyan', label='Total load in area (smoothed)')
-    
-    # Effektgrense
-    plt.plot(np.ones(8760)*P_lim, 'r--', label='Power flow limit')
-    plt.xlabel('Hour of the year')
-    plt.ylabel('Load demand (MW)')
-    plt.title('Load time series for load points in the grid area')
-    plt.legend()
-    plt.grid()
+
+    # color map
+    colors = cm.get_cmap("tab10", n_plots).colors  
+
+    # --- draw in desired order
+    for key in ordered_plots:
+        if key == "total":
+            # compute sum first
+            for bus_i in bus_i_subset:
+                load_sum += load_time_series_mapped[bus_i].to_numpy()
+            #load_sum += new_load_time_series
+
+            ax_total = axes[plot_idx]
+            ax_total.plot(load_sum, color=colors[plot_idx], label='Total load in area')
+            ax_total.plot(load_sum.argmax(), load_sum.max(), 'o', color='red')
+            ax_total.annotate(f'{load_sum.max():.4f} MW', 
+                              xy=(load_sum.argmax(), load_sum.max()), 
+                              xytext=(5,0), textcoords='offset points',
+                              fontsize=8, color='black', ha='left', va='center')
+            ax_total.set_ylabel("MW")
+            ax_total.legend(loc='upper left')
+            ax_total.grid(True)
+            plot_idx += 1
+
+        elif key == "buses":
+            for bus_i in bus_i_subset:
+                ax = axes[plot_idx]
+                series = load_time_series_mapped[bus_i]
+                ax.plot(series, color=colors[plot_idx], label=f'Bus {bus_i}')
+                
+                max_val = series.max()
+                max_hour = series.idxmax()
+                ax.plot(max_hour, max_val, 'o', color='red')
+                ax.annotate(f'{max_val:.4f} MW', 
+                            xy=(max_hour, max_val), 
+                            xytext=(5,0), textcoords='offset points',
+                            fontsize=8, color='black', ha='left', va='center')
+                ax.set_ylabel("MW")
+                ax.legend(loc='upper left')
+                ax.grid(True)
+                plot_idx += 1
+
+        elif key == "new_load":
+            ax_new = axes[plot_idx]
+            ax_new.plot(new_load_time_series, '--', color=colors[plot_idx], 
+                        label=f'New load (bus {i_time_series_new_load})')
+
+            max_val = new_load_time_series.max()
+            max_hour = new_load_time_series.argmax()
+            ax_new.plot(max_hour, max_val, 'o', color='red')
+            ax_new.annotate(f'{max_val:.4f} MW', 
+                            xy=(max_hour, max_val), 
+                            xytext=(5,0), textcoords='offset points',
+                            fontsize=8, color='black', ha='left', va='center')
+
+            ax_new.set_ylabel("MW")
+            ax_new.legend(loc='upper left')
+            ax_new.grid(True)
+            plot_idx += 1
+
+        elif key == "smooth":
+            window_size = 10*24
+            window = np.ones(window_size) / window_size
+            pad_width = window_size // 2
+            load_sum_padded = np.pad(load_sum, pad_width, mode='reflect')
+            load_sum_smooth = np.convolve(load_sum_padded, window, mode='valid')
+
+            ax_smooth = axes[plot_idx]
+            ax_smooth.plot(load_sum_smooth, color=colors[plot_idx], 
+                           label='Total load in area (smoothed)')
+            ax_smooth.set_ylabel("MW")
+            ax_smooth.set_xlabel("Hour of the year")
+            ax_smooth.legend(loc='upper left')
+            ax_smooth.grid(True)
+            plot_idx += 1
+
+    plt.suptitle("Load time series for load points in the grid area", y=0.92)
+    plt.tight_layout()
     plt.show()
-    
-    return load_sum, load_sum_smooth
+
+    return load_sum, load_sum_smooth if "smooth" in ordered_plots else None
 
 def make_load_table(net, bus_i_subset):
     """
@@ -218,25 +284,54 @@ def make_load_table(net, bus_i_subset):
     
     return table
 
-def make_load_profile(load_sum, P_lim):
+def make_load_profile(load_sum, P_lim=None):
     """
-    Sums up load for each time step and sort it in descending order. 
-    Plots the load profile in MW as a function of the number of hours in the year.
+    Creates Load Duration Curve (LDC) and highlights:
+    - Maximum load
+    - Total annual energy (area under curve)
+    - Utilization time (equivalent rectangle width)
     """
+    # Sort load in descending order
     load_sum_sorted = np.sort(load_sum)[::-1]
     hours = np.arange(1, len(load_sum_sorted)+1)
+
+    # --- calculate metrics
+    P_max = load_sum_sorted[0]               # maximum load (MW)
+    E = load_sum_sorted.sum()               # total energy (MWh, since MW*1h)
+    T_util = E / P_max                       # utilization time (hours)
+
+    # --- plot
+    fig, ax = plt.subplots(figsize=(10,6))
+    ax.plot(hours, load_sum_sorted, label='Load Duration Curve', color="tab:blue")
     
-    plt.figure(figsize=(10,6))
-    plt.plot(hours, load_sum_sorted, label='Load profile')
-    plt.plot(hours, np.ones(len(hours))*P_lim, 'r--', label='Power flow limit')
-    plt.xlabel('Number of hours in the year')
-    plt.ylabel('Load demand (MW)')
-    plt.title('Load profile for load points in the grid area')
-    plt.legend()
-    plt.grid()
+    # shade area under curve = total energy
+    #ax.fill_between(hours, load_sum_sorted, color="tab:blue", alpha=0.2, label=f"Total energy = {E:.1f} MWh")
+    
+    ## mark max power
+    #ax.plot(0, P_max, 'ro')
+    #ax.annotate(f"Max load = {P_max:.3f} MW", xy=(0, P_max), xytext=(50, P_max*1.02),
+    #            arrowprops=dict(arrowstyle="->", color="red"), color="red")
+
+    # mark utilization time (equivalent rectangle)
+    #ax.hlines(P_max, 0, T_util, colors="green", linestyles="--", label="Utilization time")
+    #ax.vlines(T_util, 0, P_max, colors="green", linestyles="--")
+    #ax.annotate(f"T_util = {T_util:.0f} h", xy=(T_util, P_max/2),
+    #            xytext=(T_util+200, P_max/2), arrowprops=dict(arrowstyle="->", color="green"),
+    #            color="green")
+
+    # optional power flow limit line
+    if P_lim is not None:
+        ax.axhline(P_lim, color="r", linestyle="--", label=f"Power flow limit {P_lim:.2f} MW")
+
+    ax.set_xlabel("Number of hours in the year")
+    ax.set_ylabel("Load demand (MW)")
+    ax.set_title("Load Duration Curve with Utilization Time and Energy")
+    ax.legend()
+    ax.grid(True)
     plt.show()
-    
-    return load_sum_sorted
+
+    return load_sum_sorted, P_max, E, T_util
+
 
 def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, v_limit=0.95):
     """
@@ -295,29 +390,58 @@ def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, 
 
     # --- plott
     plt.figure(figsize=(8,5))
-    plt.plot(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], "o-", label="Laveste spenning")
-    plt.axhline(v_limit, color="r", linestyle="--", label=f"Spenningsgrense {v_limit} p.u.")
+    plt.plot(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], "o-", label="Lowest voltage (Bus 96)")
+    plt.axhline(v_limit, color="r", linestyle="--", label=f"Voltage limit ({v_limit} p.u.)")
     
     # marker skaleringsfaktor ved punktene
     for x, y, sf in zip(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], results_df["Scaling factor"]):
         plt.annotate(f"{sf:.2f}", (x, y), textcoords="offset points", xytext=(5,5), fontsize=8, color="black")
     
-    plt.xlabel("Aggregert last i området [MW]")
-    plt.ylabel("Laveste spenning [p.u.]")
-    plt.title("Spenning som funksjon av aggregert last")
+    plt.xlabel("Aggregated load in area (MW)")
+    plt.ylabel("Lowest voltage (p.u.)")
+    plt.title("Voltage vs. aggregated load in area")
     plt.grid()
     plt.legend()
     plt.show()
 
     return results_df
 
+def plot_total_load(load_time_series_mapped, bus_i_subset, new_load_time_series=None):
+    """
+    Plotter kun total last i området (summen av busser og ev. ny last).
+    """
+    load_sum = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_sum += load_time_series_mapped[bus_i].to_numpy()
+    
+    if new_load_time_series is not None:
+        load_sum += new_load_time_series
+    
+    plt.figure(figsize=(12,4))
+    plt.plot(load_sum, 'k', label='Aggregated load time series', color ="tab:blue")
+    plt.plot(load_sum.argmax(), load_sum.max(), 'o', color='red')
+    plt.text(load_sum.argmax(), load_sum.max()*1.01, f'{load_sum.max():.4f} MW',
+             ha='center', va='bottom', fontsize=9)
+    plt.xlabel("Hour of the year")
+    plt.ylabel("Load (MW)")
+    plt.title("Aggregated load time series for load points in the grid area")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    return load_sum
 
-#plot_voltage_profile(net)  
+plot_area_load_time_series(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim, i_time_series_new_load, 
+                           which_plots=("buses", "total"))
+
+loadsum = plot_total_load(load_time_series_mapped, bus_i_subset, new_load_time_series)
+
+plot_voltage_profile(net)  
 table = make_load_table(net, bus_i_subset)
 print(table)
-#load_sum, load_sum_smooth = plot_area_load_time_series(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim, i_time_series_new_load)
-#load_sum_sorted = make_load_profile(load_sum, P_lim)
-#analyze_voltage_capacity(net, bus_i_subset)
+
+load_sum_sorted = make_load_profile(loadsum, P_lim=None)
+analyze_voltage_capacity(net, bus_i_subset)
 
 
 ## calculate hours where load exceeds the power flow limit
