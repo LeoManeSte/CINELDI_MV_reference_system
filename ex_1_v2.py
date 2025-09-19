@@ -13,7 +13,7 @@ def make_load_profile_ewh(time_steps,P,T,S,T_a,C,R,T_min,T_max, P_m,t_act,S_act)
     for t in range(1,time_steps):        
         T_prev = T
         S_prev = S
-
+        
         # Solve differential equation for the change of temperature for the next time step
         T = T_a - exp(-(1/60)/(C*R))*(T_a + P_m * R * S_prev  - T_prev) + P_m * R * S_prev 
 
@@ -189,12 +189,12 @@ def analyze_shift(result):
         t_base_on = None
 
     try:
-        t_base_off = np.where(P_base[t_act:] == 0)[0][0] + t_act
+        t_base_off = np.where(P_base[t_act:] == 0)[0][0] + t_act + 1
     except IndexError:
         t_base_off = len(P_base)
 
     try:
-        t_flex_off = np.where(P_flex[t_act:] == 0)[0][0] + t_act
+        t_flex_off = np.where(P_flex[t_act:] == 0)[0][0] + t_act + 1
     except IndexError:
         t_flex_off = len(P_flex)
 
@@ -209,8 +209,8 @@ def analyze_shift(result):
             t_off = None
 
 
-        delay = t_off - t_act
-        energy_shifted = np.trapz(P_flex[t_act:t_off], dx=1/60)
+        delay = t_off - t_act 
+        energy_shifted = np.trapz(P_flex[t_act:t_off], dx=1/600)
         area_x = range(t_act, t_base_on)
         area_y1 = P_flex[t_act:t_base_on]
         area_y2 = P_base[t_act:t_base_on]
@@ -218,7 +218,7 @@ def analyze_shift(result):
         # Sen: baseline varer lenger enn fleks
         shift_type = "senere"
         delay = t_base_off - t_flex_off
-        energy_shifted = np.trapz(P_base[t_act:t_base_off], dx=1/60)
+        energy_shifted = np.trapz(P_base[t_act:t_base_off-1], dx=1/600)
         area_x = range(t_act, t_base_off)
         area_y1 = P_base[t_act:t_base_off]
         area_y2 = P_flex[t_act:t_base_off]
@@ -248,15 +248,14 @@ def analyze_shift(result):
         area_x,
         area_y1,
         area_y2,
-        color="orange", alpha=0.5,
+        color="orange", alpha=0.2,
         label="Shifted energy"
     )
 
     # Tekst
     ax1.text(
-        0.02, 0.95,
-        f"Shift type: {shift_type}\n"
-        f"Service Duration: {delay} min\n"
+        0.2, 0.95,
+        f"Service Duration: {delay-1} min\n"
         f"Energy shifted: {energy_shifted:.3f} kWh",
         transform=ax1.transAxes,
         fontsize=12,
@@ -273,10 +272,20 @@ def analyze_shift(result):
     plt.tight_layout()
     plt.show()
 
-def plot_flexibility_activation(result):
+import matplotlib.pyplot as plt
+
+def plot_flexibility_activation(result, zoom_range=None):
     """
     Plot fleksibilitetsaktivering (kW) som differansen P_flex - P_base.
     Viser både aktivering (under null) og rebound-effekt (over null).
+
+    Parameters
+    ----------
+    result : dict
+        Resultatstruktur med P_base, P_flex og t_act.
+    zoom_range : tuple (start, stop), optional
+        Tidsintervall (indeks) for zoom i subplot 2.
+        Eks: zoom_range=(100, 200).
     """
 
     P_base = result["per_ewh"][0]["P_base"]
@@ -287,19 +296,35 @@ def plot_flexibility_activation(result):
     flex_signal = P_base - P_flex 
 
     # --- Plot ---
-    plt.figure(figsize=(10, 5))
-    plt.plot(flex_signal, color="tab:green", linewidth=2,
-             label="Flexibility Characteristic")
-    plt.axhline(0, color="black", linestyle=":")  # baseline
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharey=True)
+
+    # --- Hele signalet ---
+    axes[0].plot(flex_signal, color="tab:green", linewidth=2,
+                 label="Flexibility Characteristic")
+    axes[0].axhline(0, color="black", linestyle=":", label="Base Case")
 
     if t_act is not None:
-        plt.axvline(t_act, color="red", linestyle="--", label="Activation start")
+        axes[0].axvline(t_act, color="red", linestyle="--", label="Activation start")
 
-    plt.xlabel("Minutes")
-    plt.ylabel("Power Capacity (kW)")
-    plt.title("Flexibility activation incl. rebound effect")
-    plt.legend()
-    plt.grid(True)
+    axes[0].set_title("Flexibility activation incl. rebound effect (full signal)")
+    axes[0].set_ylabel("Power Capacity (kW)")
+    axes[0].legend()
+    axes[0].grid(True)
+
+    # --- Zoomet inn på valgt tidsintervall ---
+    axes[1].plot(flex_signal, color="tab:green", linewidth=2)
+    axes[1].axhline(0, color="black", linestyle=":")
+    if t_act is not None and zoom_range is not None and zoom_range[0] <= t_act <= zoom_range[1]:
+        axes[1].axvline(t_act, color="red", linestyle="--")
+
+    if zoom_range is not None:
+        axes[1].set_xlim(zoom_range)
+
+    axes[1].set_title("Zoomed-in view")
+    axes[1].set_xlabel("Minutes")
+    axes[1].set_ylabel("Power Capacity (kW)")
+    axes[1].grid(True)
+
     plt.tight_layout()
     plt.show()
 
@@ -310,6 +335,69 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+def plot_flexibility_activation(result, zoom_range=None):
+    """
+    Plot fleksibilitetsaktivering (kW) som differansen P_flex - P_base.
+    Viser både aktivering (under null) og rebound-effekt (over null).
+
+    Parameters
+    ----------
+    result : dict
+        Resultatstruktur med P_base, P_flex og t_act.
+    zoom_range : tuple (start, stop), optional
+        Tidsintervall (indeks) for zoom i subplot 2.
+        Eks: zoom_range=(100, 200).
+    """
+
+    P_base = result["per_ewh"][0]["P_base"]
+    P_flex = result["per_ewh"][0]["P"]
+    t_act = result["params"]["t_act"]
+
+    # Differanse mellom fleksibel og baseline last
+    flex_signal = P_base - P_flex 
+
+    # --- Plot ---
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharey=True)
+
+    # --- Hele signalet ---
+    axes[0].plot(flex_signal, color="tab:green", linewidth=2,
+                 label="Flexibility Characteristic")
+    axes[0].axhline(0, color="black", linestyle=":", label="Base Case")
+
+    if t_act is not None:
+        axes[0].axvline(t_act, color="red", linestyle="--", label="Activation start")
+
+    axes[0].set_title("Flexibility activation Characteristic")
+    axes[0].set_ylabel("Power Capacity (kW)")
+    axes[0].legend()
+    axes[0].grid(True)
+
+    # --- Zoomet inn på valgt tidsintervall ---
+    axes[1].plot(flex_signal, color="tab:green", linewidth=2)
+    axes[1].axhline(0, color="black", linestyle=":")
+    if t_act is not None and zoom_range is not None and zoom_range[0] <= t_act <= zoom_range[1]:
+        axes[1].axvline(t_act, color="red", linestyle="--")
+
+    if zoom_range is not None:
+        axes[1].set_xlim(zoom_range)
+
+    axes[1].set_title("Zoomed-in view")
+    axes[1].set_xlabel("Minutes")
+    axes[1].set_ylabel("Power Capacity (kW)")
+    axes[1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
 
 def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
     """
@@ -408,6 +496,7 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
     return results
 
 
+
 t_act_values = [320, 580, 900]  # 13:20, 16:00, 18:20
 
 results = quantify_capacity_flexibility(
@@ -425,67 +514,7 @@ results = quantify_capacity_flexibility(
     seed=123
 )
 
-# --- Eksempelkjøring ---
-#result = simulate_ewh(
-#    P_m=2.0,
-#    T_a=24.0,
-#    T_min=70.0,
-#    T_max=75.0,
-#    C=0.335,
-#    R=600.0,
-#    T_init_single=73.0,
-#    S_init=0,
-#    P_init=0.0,
-#    t_act=780,      # Aktivering 13:00
-#    S_act=0,        # Slå av
-#    time_steps=24*60,
-#    N_EWH=1,
-#    seed=42,
-#    plot=True
-#)
 
-#result = simulate_ewh(
-#    P_m=2.0,
-#    T_a=24.0,
-#    T_min=70.0,
-#    T_max=75.0,
-#    C=0.335,
-#    R=600.0,
-#    T_init_single=73.0,
-#    S_init=0,
-#    P_init=0.0,
-#    t_act=200,      # Aktivering 13:00
-#    S_act=1,        # Slå av
-#    time_steps=24*60,
-#    N_EWH=1,
-#    seed=42,
-#    plot=True
-#)
-#
-#analyze_shift(result)
-#
-#plot_flexibility_activation(result)
-#### # Exercise questions:
-
-# 1) Plott uten å gjøre endringer.
-
-#simulate_ewh(
-#    P_m=2.0,
-#    T_a=24.0,
-#    T_min=70.0,
-#    T_max=75.0,
-#    C=0.335,
-#    R=600.0,
-#    T_init_single=73.0,
-#    S_init=0,
-#    P_init=0.0,
-#    t_act=None,      # Change to None to disable flexibility
-#    S_act=None,      # Change to None to disable flexibility
-#    time_steps=24*60,
-#    N_EWH=1,         # Change to >1 for multiple heaters
-#    seed=42,
-#    plot=True
-#)
 
 #  Når temperaturen når T_min skrus EWH på, og når den
 # når T_max skrus den av. Dette gir en syklus som repeterer seg. 
@@ -494,7 +523,7 @@ results = quantify_capacity_flexibility(
 # Aktiver signal på ca. 13:00 (780 min) for å skru av EWH som er på, 
 # og dermed flytte last til senere tidspunkt.
 
-#simulate_ewh(
+#result = simulate_ewh(
 #    P_m=2.0,
 #    T_a=24.0,
 #    T_min=70.0,
@@ -509,7 +538,10 @@ results = quantify_capacity_flexibility(
 #    time_steps=24*60,
 #    N_EWH=1,        # Change to >1 for multiple heaters
 #    seed=42,
-#    plot=True
-#)
+#    plot=True)
+#
+#analyze_shift(result)
+#
+#plot_flexibility_activation(result, zoom_range=(190, 250))  # Zoom in around activation time
 
 
