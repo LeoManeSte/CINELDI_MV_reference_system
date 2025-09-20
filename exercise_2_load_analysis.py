@@ -24,6 +24,7 @@ import matplotlib as mpl
 import numpy as np
 import networkx as nx
 from matplotlib import gridspec
+import matplotlib.cm as cm
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -80,6 +81,8 @@ new_load_time_series = new_load_profiles[i_time_series_new_load]*P_max_new
 load_time_series_mapped = profiles_mapped.mul(net.load['p_mw'])
 # %%
 
+#################### Task 1 ####################
+
 def plot_voltage_profile(net):
     """
     Plots the voltage profile for the buses in bus_i_subset.
@@ -126,17 +129,88 @@ def plot_voltage_profile(net):
     plt.tight_layout()
     plt.show()
 
-import matplotlib.cm as cm
+#################### Task 2 ####################
 
-import matplotlib.cm as cm
+def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, v_limit=0.95):
+    """
+    Analyserer spenningsnivået i et område når lasten økes.
+    
+    Parametre
+    ---------
+    net : pandapowerNet
+        Nettmodellen.
+    bus_i_subset : list
+        Liste med buss-IDer i området.
+    scaling_range : tuple
+        (min, max) for skaleringsfaktorene. Default (1,2).
+    steps : int
+        Antall punkter i skaleringen. Default 11.
+    v_limit : float
+        Nedre spenningsgrense (p.u.). Default 0.95.
+    
+    Returnerer
+    ----------
+    results_df : pandas.DataFrame
+        Tabell med aggregerte laster og laveste spenninger.
+    """
+    scaling_factors = np.linspace(scaling_range[0], scaling_range[1], steps)
+    lowest_voltages = []
+    agg_loads = []
 
-import matplotlib.cm as cm
+    # --- hent basislaster
+    base_loads = net.load.loc[net.load.bus.isin(bus_i_subset), ["bus", "p_mw"]].copy()
+    base_loads["bus_name"] = base_loads["bus"].map(lambda b: net.bus.loc[b, "name"])
+
+    print("=== Basislaster i området ===")
+    print(base_loads[["bus_name", "p_mw"]])
+    print("Sum (MW):", base_loads["p_mw"].sum())
+
+    # --- skaler laster og kjør power flow
+    for sf in scaling_factors:
+        # skaler opp
+        for load_idx in net.load.index[net.load.bus.isin(bus_i_subset)]:
+            net.load.at[load_idx, "p_mw"] = base_loads.loc[base_loads.bus == net.load.at[load_idx, "bus"], "p_mw"].values[0] * sf
+
+        # kjør kraftflyt
+        pp.runpp(net)
+        vmin = net.res_bus.loc[bus_i_subset, "vm_pu"].min()
+        p_sum = net.load.loc[net.load.bus.isin(bus_i_subset), "p_mw"].sum()
+
+        lowest_voltages.append(vmin)
+        agg_loads.append(p_sum)
+
+    # --- tabell med resultater
+    results_df = pd.DataFrame({
+        "Scaling factor": scaling_factors,
+        "Aggregated load (MW)": agg_loads,
+        "Lowest voltage (p.u.)": lowest_voltages
+    })
+
+    # --- plott
+    plt.figure(figsize=(8,5))
+    plt.plot(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], "o-", label="Lowest voltage (Bus 96)")
+    plt.axhline(v_limit, color="r", linestyle="--", label=f"Voltage limit ({v_limit} p.u.)")
+    
+    # marker skaleringsfaktor ved punktene
+    for x, y, sf in zip(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], results_df["Scaling factor"]):
+        plt.annotate(f"{sf:.2f}", (x, y), textcoords="offset points", xytext=(5,5), fontsize=8, color="black")
+    
+    plt.xlabel("Aggregated load in area (MW)")
+    plt.ylabel("Lowest voltage (p.u.)")
+    plt.title("Voltage vs. aggregated load in area")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+    return results_df
+
+#################### Task 3 and Task 4 ####################
 
 def plot_area_load_time_series(load_time_series_mapped, 
                                bus_i_subset, 
-                               new_load_time_series, 
-                               P_lim, 
-                               i_time_series_new_load, 
+                               i_time_series_new_load,
+                               P_lim = None,  
+                               new_load_time_series = None,
                                which_plots=("buses", "new_load", "total", "smooth")):
     """
     Plot load time series for selected buses in the area + new load, total load, 
@@ -180,7 +254,12 @@ def plot_area_load_time_series(load_time_series_mapped,
             # compute sum first
             for bus_i in bus_i_subset:
                 load_sum += load_time_series_mapped[bus_i].to_numpy()
-            #load_sum += new_load_time_series
+
+            if new_load_time_series is not None:
+                load_sum += new_load_time_series
+
+            if P_lim is not None:
+                axes[plot_idx].axhline(P_lim, color='r', linestyle='--', label=f'Power flow limit {P_lim:.3f} MW')
 
             ax_total = axes[plot_idx]
             ax_total.plot(load_sum, color=colors[plot_idx], label='Total load in area')
@@ -284,7 +363,9 @@ def make_load_table(net, bus_i_subset):
     
     return table
 
-def make_load_profile(load_sum, P_lim=None):
+##################### Task 5 and Task 6 (deler av 6) ####################
+
+def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_time=False, mark_peak_load=False):
     """
     Creates Load Duration Curve (LDC) and highlights:
     - Maximum load
@@ -304,24 +385,36 @@ def make_load_profile(load_sum, P_lim=None):
     fig, ax = plt.subplots(figsize=(10,6))
     ax.plot(hours, load_sum_sorted, label='Load Duration Curve', color="tab:blue")
     
-    # shade area under curve = total energy
-    #ax.fill_between(hours, load_sum_sorted, color="tab:blue", alpha=0.2, label=f"Total energy = {E:.1f} MWh")
-    
-    ## mark max power
-    #ax.plot(0, P_max, 'ro')
-    #ax.annotate(f"Max load = {P_max:.3f} MW", xy=(0, P_max), xytext=(50, P_max*1.02),
-    #            arrowprops=dict(arrowstyle="->", color="red"), color="red")
+    if mark_energy:
+        # shade area under curve = total energy
+        ax.fill_between(hours, load_sum_sorted, color="tab:blue", alpha=0.2, label=f"Total energy = {E:.1f} MWh")
 
-    # mark utilization time (equivalent rectangle)
-    #ax.hlines(P_max, 0, T_util, colors="green", linestyles="--", label="Utilization time")
-    #ax.vlines(T_util, 0, P_max, colors="green", linestyles="--")
-    #ax.annotate(f"T_util = {T_util:.0f} h", xy=(T_util, P_max/2),
-    #            xytext=(T_util+200, P_max/2), arrowprops=dict(arrowstyle="->", color="green"),
-    #            color="green")
+    # mark max power
+    if mark_peak_load:
+        ax.plot(1, P_max, 'ro')
+        ax.annotate(f"Max load = {P_max:.3f} MW", xy=(1, P_max), xytext=(5, P_max*1.02),
+                    arrowprops=dict(arrowstyle="->", color="red"), color="red")
+    
+    # mark number of hours where load exceeds P_limit
+    if P_lim is not None:
+        hours_exceeding_limit = np.sum(load_sum_sorted > P_lim) + 1  # +1 to include the hour where it just exceeds
+        ax.hlines(P_lim, 0, hours_exceeding_limit, colors="purple", linestyles="--", label=f"Hours above limit: {hours_exceeding_limit} h")
+        ax.vlines(hours_exceeding_limit, 0, P_lim, colors="purple", linestyles="--")
+        ax.annotate(f"{hours_exceeding_limit} h", xy=(hours_exceeding_limit, P_lim),
+                    xytext=(hours_exceeding_limit+5, P_lim), arrowprops=dict(arrowstyle="->", color="purple"),
+                    color="purple")
+
+    if mark_utilization_time:
+        # mark utilization time (equivalent rectangle)
+        ax.hlines(P_max, 0, T_util, colors="green", linestyles="--", label="Utilization time")
+        ax.vlines(T_util, 0, P_max, colors="green", linestyles="--")
+        ax.annotate(f"T_util = {T_util:.0f} h", xy=(T_util, P_max/2),
+                    xytext=(T_util+200, P_max/2), arrowprops=dict(arrowstyle="->", color="green"),
+                    color="green")
 
     # optional power flow limit line
     if P_lim is not None:
-        ax.axhline(P_lim, color="r", linestyle="--", label=f"Power flow limit {P_lim:.2f} MW")
+        ax.axhline(P_lim, color="r", linestyle="--", label=f"Power flow limit {P_lim:.3f} MW")
 
     ax.set_xlabel("Number of hours in the year")
     ax.set_ylabel("Load demand (MW)")
@@ -332,124 +425,32 @@ def make_load_profile(load_sum, P_lim=None):
 
     return load_sum_sorted, P_max, E, T_util
 
+##################### Task 7 ####################
 
-def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, v_limit=0.95):
-    """
-    Analyserer spenningsnivået i et område når lasten økes.
-    
-    Parametre
-    ---------
-    net : pandapowerNet
-        Nettmodellen.
-    bus_i_subset : list
-        Liste med buss-IDer i området.
-    scaling_range : tuple
-        (min, max) for skaleringsfaktorene. Default (1,2).
-    steps : int
-        Antall punkter i skaleringen. Default 11.
-    v_limit : float
-        Nedre spenningsgrense (p.u.). Default 0.95.
-    
-    Returnerer
-    ----------
-    results_df : pandas.DataFrame
-        Tabell med aggregerte laster og laveste spenninger.
-    """
-    scaling_factors = np.linspace(scaling_range[0], scaling_range[1], steps)
-    lowest_voltages = []
-    agg_loads = []
+# Analytisk?
 
-    # --- hent basislaster
-    base_loads = net.load.loc[net.load.bus.isin(bus_i_subset), ["bus", "p_mw"]].copy()
-    base_loads["bus_name"] = base_loads["bus"].map(lambda b: net.bus.loc[b, "name"])
+#################### Task 8 ####################
 
-    print("=== Basislaster i området ===")
-    print(base_loads[["bus_name", "p_mw"]])
-    print("Sum (MW):", base_loads["p_mw"].sum())
+# bruk make_load_profile()
 
-    # --- skaler laster og kjør power flow
-    for sf in scaling_factors:
-        # skaler opp
-        for load_idx in net.load.index[net.load.bus.isin(bus_i_subset)]:
-            net.load.at[load_idx, "p_mw"] = base_loads.loc[base_loads.bus == net.load.at[load_idx, "bus"], "p_mw"].values[0] * sf
-
-        # kjør kraftflyt
-        pp.runpp(net)
-        vmin = net.res_bus.loc[bus_i_subset, "vm_pu"].min()
-        p_sum = net.load.loc[net.load.bus.isin(bus_i_subset), "p_mw"].sum()
-
-        lowest_voltages.append(vmin)
-        agg_loads.append(p_sum)
-
-    # --- tabell med resultater
-    results_df = pd.DataFrame({
-        "Scaling factor": scaling_factors,
-        "Aggregated load (MW)": agg_loads,
-        "Lowest voltage (p.u.)": lowest_voltages
-    })
-
-    # --- plott
-    plt.figure(figsize=(8,5))
-    plt.plot(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], "o-", label="Lowest voltage (Bus 96)")
-    plt.axhline(v_limit, color="r", linestyle="--", label=f"Voltage limit ({v_limit} p.u.)")
-    
-    # marker skaleringsfaktor ved punktene
-    for x, y, sf in zip(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], results_df["Scaling factor"]):
-        plt.annotate(f"{sf:.2f}", (x, y), textcoords="offset points", xytext=(5,5), fontsize=8, color="black")
-    
-    plt.xlabel("Aggregated load in area (MW)")
-    plt.ylabel("Lowest voltage (p.u.)")
-    plt.title("Voltage vs. aggregated load in area")
-    plt.grid()
-    plt.legend()
-    plt.show()
-
-    return results_df
-
-def plot_total_load(load_time_series_mapped, bus_i_subset, new_load_time_series=None):
-    """
-    Plotter kun total last i området (summen av busser og ev. ny last).
-    """
-    load_sum = np.zeros(8760)
-    for bus_i in bus_i_subset:
-        load_sum += load_time_series_mapped[bus_i].to_numpy()
-    
-    if new_load_time_series is not None:
-        load_sum += new_load_time_series
-    
-    plt.figure(figsize=(12,4))
-    plt.plot(load_sum, 'k', label='Aggregated load time series', color ="tab:blue")
-    plt.plot(load_sum.argmax(), load_sum.max(), 'o', color='red')
-    plt.text(load_sum.argmax(), load_sum.max()*1.01, f'{load_sum.max():.4f} MW',
-             ha='center', va='bottom', fontsize=9)
-    plt.xlabel("Hour of the year")
-    plt.ylabel("Load (MW)")
-    plt.title("Aggregated load time series for load points in the grid area")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    
-    return load_sum
-
-plot_area_load_time_series(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim, i_time_series_new_load, 
-                           which_plots=("buses", "total"))
-
-loadsum = plot_total_load(load_time_series_mapped, bus_i_subset, new_load_time_series)
-
-plot_voltage_profile(net)  
-table = make_load_table(net, bus_i_subset)
-print(table)
-
-load_sum_sorted = make_load_profile(loadsum, P_lim=None)
-analyze_voltage_capacity(net, bus_i_subset)
+##################### Task 9 ####################
 
 
-## calculate hours where load exceeds the power flow limit
-#n_hours_exceeding_limit = np.sum(load_sum > P_lim)
-#print('Number of hours where load exceeds the power flow limit: %d' % n_hours_exceeding_limit)
-#
-## calcurate energy not served due to the power flow limit (in MWh)
-#energy_not_served = np.sum(load_sum[load_sum > P_lim] - P_lim)
-#print('Energy not served due to the power flow limit: %.2f MWh' % energy_not_served)
 
+
+
+loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
+                                                  bus_i_subset,  
+                                                  i_time_series_new_load,
+                                                  P_lim = None, 
+                                                  new_load_time_series = None,
+                                                  which_plots=("total"))
+
+
+#plot_voltage_profile(net)  
+#table = make_load_table(net, bus_i_subset)
+#print(table)
+
+load_sum_sorted = make_load_profile(loadsum, P_lim=None, mark_energy=False, mark_utilization_time=False, mark_peak_load=False)
+#analyze_voltage_capacity(net, bus_i_subset)
 
