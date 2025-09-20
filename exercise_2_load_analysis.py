@@ -435,22 +435,48 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 
 ##################### Task 9 ####################
 
+# analytisk 
+
+################# Task 10 ####################
+
+# bruk make_load_profile()
+
+################# Task 11 ####################
+
+# Mangler kode
+
+################## Task 12 ####################
+
+# Teorioppgave
+
+################## Task 13 ####################
+
+# Mangler kode
+# lage en funksjon som som sammenlikner tre ulike LDCs i samme plott kan være en idé
+
+################## Task 14 ####################
+
+# Kan lage en kode, men kan også gjøre denne med formler i LaTeX
+
+################## Task 15 ####################
+
+# Teorioppgave
 
 
 
+################### Main code Execution ####################
 
-loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
-                                                  bus_i_subset,  
-                                                  i_time_series_new_load,
-                                                  P_lim = None, 
-                                                  new_load_time_series = None,
-                                                  which_plots=("total"))
-
+#loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
+#                                                  bus_i_subset,  
+#                                                  i_time_series_new_load,
+#                                                  P_lim = None, 
+#                                                  new_load_time_series = None,
+#                                                  which_plots=("total"))
 
 #plot_voltage_profile(net)  
 #table = make_load_table(net, bus_i_subset)
 #print(table)
 
-load_sum_sorted = make_load_profile(loadsum, P_lim=None, mark_energy=False, mark_utilization_time=False, mark_peak_load=False)
+#load_sum_sorted = make_load_profile(loadsum, P_lim=None, mark_energy=False, mark_utilization_time=False, mark_peak_load=False)
 #analyze_voltage_capacity(net, bus_i_subset)
 
