@@ -435,7 +435,7 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 
 ##################### Task 9 ####################
 
-# analytisk 
+# Analytisk 
 
 ################# Task 10 ####################
 
@@ -443,7 +443,73 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 
 ################# Task 11 ####################
 
-# Mangler kode
+def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim):
+    """
+    Karakteriserer fleksibilitetsbehovet når tidsavhengig ny last legges til området.
+    Visualiserer behovet på en Load Duration Curve (LDC).
+    """
+    # --- total last i området (eksisterende + ny last)
+    load_sum = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_sum += load_time_series_mapped[bus_i].to_numpy()
+    load_sum += new_load_time_series
+
+    # --- overskridelser
+    exceedance = load_sum - P_lim
+    exceedance[exceedance < 0] = 0
+
+    # sorter nedover = LDC for overskridelse
+    exceed_sorted = np.sort(exceedance)[::-1]
+    hours = np.arange(1, len(exceed_sorted)+1)
+
+    # --- nøkkelverdier
+    capacity = exceed_sorted[0]                   # MW
+    duration = np.count_nonzero(exceed_sorted) + 1    # timer (inkluderer timen der det akkurat overskrides)
+    energy = exceed_sorted.sum()                  # MWh
+
+    results = {
+        "Capacity (MW)": capacity,
+        "Service duration (h)": duration,
+        "Energy (MWh)": energy
+    }
+
+    print("=== Flexibility need (time-dependent new load, LDC) ===")
+    for k, v in results.items():
+        print(f"{k}: {v:.3f}")
+
+    # --- visualisering på LDC
+    fig, ax = plt.subplots(figsize=(10,6))
+    ax.plot(hours, exceed_sorted, label="Flexibility need", color="orange")
+
+    # marker energi (areal)
+    ax.fill_between(hours, exceed_sorted, color="orange", alpha=0.3,
+                    label=f"Flexibility energy need = {energy:.1f} MWh")
+
+    # marker maks kapasitet
+    ax.plot(1, capacity, "ro")
+    ax.annotate(f"Max Flexibility capacity = {capacity:.3f} MW",
+                xy=(1, capacity),
+                xytext=(10, capacity*0.95),
+                arrowprops=dict(arrowstyle="->", color="red"),
+                color="red")
+
+    # marker service duration
+    ax.axvline(duration, color="purple", linestyle="--", label=f"Service duration = {duration} h")
+    ax.annotate(f"{duration} h", 
+                xy=(duration, 0),
+                xytext=(duration+10, capacity*0.3),
+                arrowprops=dict(arrowstyle="->", color="purple"),
+                color="purple")
+
+    ax.set_xlabel("Number of hours in the year")
+    ax.set_ylabel("Flexibility need (MW)")
+    ax.set_title("Flexibility need")
+    ax.legend()
+    ax.grid(True)
+    plt.xlim(0, duration + 20)
+    plt.show()
+
+    return results
 
 ################## Task 12 ####################
 
@@ -451,12 +517,142 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 
 ################## Task 13 ####################
 
-# Mangler kode
-# lage en funksjon som som sammenlikner tre ulike LDCs i samme plott kan være en idé
+def compare_ldcs(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4, P_lim=None):
+    """
+    Sammenlikner tre Load Duration Curves (LDCs):
+      a) Eksisterende laster (uten ny last)
+      b) Eksisterende + tidsavhengig ny last
+      c) Eksisterende + konstant ny last (P_const MW hele året)
+    
+    Parametre
+    ---------
+    load_time_series_mapped : DataFrame
+        Tidsserier for lastene i nettet (kolonner = busser, rader = timer).
+    bus_i_subset : list
+        Hvilke busser i området som skal inkluderes i summen.
+    new_load_time_series : array-like
+        Tidsserien (8760 elementer) for den tidsavhengige nye lasten.
+    P_const : float
+        Konstant last (MW) for det tredje scenariet. Default = 0.4 MW.
+    P_lim : float eller None
+        Eventuell grense som tegnes inn i plottet (MW).
+    """
+    # --- Eksisterende laster
+    load_existing = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_existing += load_time_series_mapped[bus_i].to_numpy()
+
+    # --- Med tidsavhengig ny last
+    load_with_new = load_existing + new_load_time_series
+
+    # --- Med konstant ny last
+    load_with_const = load_existing + P_const
+
+    # --- LDCs (sorter nedover)
+    ldc_existing = np.sort(load_existing)[::-1]
+    ldc_with_new = np.sort(load_with_new)[::-1]
+    ldc_with_const = np.sort(load_with_const)[::-1]
+    hours = np.arange(1, 8761)
+
+    # --- Plot
+    plt.figure(figsize=(10,6))
+    plt.plot(hours, ldc_existing, label="a) Existing loads only")
+    plt.plot(hours, ldc_with_new, label="b) With time-dependent new load")
+    plt.plot(hours, ldc_with_const, label=f"c) With constant new load ({P_const:.1f} MW)")
+
+    if P_lim is not None:
+        plt.axhline(P_lim, color="r", linestyle="--", label=f"Power flow limit {P_lim:.3f} MW")
+
+    plt.xlabel("Number of hours in the year")
+    plt.ylabel("Load demand (MW)")
+    plt.title("Comparison of Load Duration Curves (LDCs)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    return ldc_existing, ldc_with_new, ldc_with_const
 
 ################## Task 14 ####################
 
-# Kan lage en kode, men kan også gjøre denne med formler i LaTeX
+def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4):
+    """
+    Beregner og sammenlikner utnyttelsestid og samtidighetsfaktor for tre scenarier:
+      a) Eksisterende laster
+      b) Eksisterende + tidsavhengig ny last
+      c) Eksisterende + konstant ny last
+    
+    Lager en tabell og to søyleplott med verdier på toppen.
+    """
+    # --- Basis: eksisterende laster
+    load_existing = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_existing += load_time_series_mapped[bus_i].to_numpy()
+
+    # --- Med tidsavhengig ny last
+    load_with_new = load_existing + new_load_time_series
+
+    # --- Med konstant ny last
+    load_with_const = load_existing + P_const
+
+    # --- Funksjon for metrics
+    def metrics(load_area, loads_per_bus=None, add_const=None, add_series=None):
+        P_max = load_area.max()
+        E = load_area.sum()  # MWh
+        T_util = E / P_max
+
+        if loads_per_bus is None:
+            loads_per_bus = [load_time_series_mapped[bus].to_numpy() for bus in bus_i_subset]
+
+        Pmax_sum = sum([ld.max() for ld in loads_per_bus])
+        if add_const is not None:
+            Pmax_sum += add_const
+        if add_series is not None:
+            Pmax_sum += add_series.max()
+
+        CF = P_max / Pmax_sum
+        return T_util, CF
+
+    # --- Beregn alle tre scenarier
+    T_util_a, CF_a = metrics(load_existing)
+    T_util_b, CF_b = metrics(load_with_new, add_series=new_load_time_series)
+    T_util_c, CF_c = metrics(load_with_const, add_const=P_const)
+
+    # --- Tabell
+    results = pd.DataFrame({
+        "Scenario": ["a) Existing", "b) With time-dependent new load", f"c) With constant {P_const:.1f} MW new load"],
+        "Utilization time (h)": [T_util_a, T_util_b, T_util_c],
+        "Coincidence factor": [CF_a, CF_b, CF_c]
+    })
+    print(results)
+
+    # --- Søyleplott: Utnyttelsestid
+    plt.figure(figsize=(7,5))
+    bars = plt.bar(results["Scenario"], results["Utilization time (h)"], color=["C0","C1","C2"])
+    plt.ylabel("Utilization time [h]")
+    plt.title("Comparison of Utilization Time")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    # legg til verdier
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01*yval, f"{yval:.0f}", 
+                 ha="center", va="bottom", fontsize=9)
+    plt.show()
+
+    # --- Søyleplott: Coincidence Factor
+    plt.figure(figsize=(7,5))
+    bars = plt.bar(results["Scenario"], results["Coincidence factor"], color=["C0","C1","C2"])
+    plt.ylabel("Coincidence factor")
+    plt.title("Comparison of Coincidence Factors")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    # legg til verdier
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01*yval, f"{yval:.3f}", 
+                 ha="center", va="bottom", fontsize=9)
+    plt.show()
+
+    return results
+
 
 ################## Task 15 ####################
 
@@ -480,3 +676,8 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 #load_sum_sorted = make_load_profile(loadsum, P_lim=None, mark_energy=False, mark_utilization_time=False, mark_peak_load=False)
 #analyze_voltage_capacity(net, bus_i_subset)
 
+#compare_ldcs(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4, P_lim=None)
+
+#compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4)
+
+#characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim)
