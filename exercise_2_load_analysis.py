@@ -511,6 +511,132 @@ def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_t
 
     return results
 
+def scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim):
+    """
+    Lager et scatterplott med overload peak (MW) som funksjon av utetid (h)
+    for perioder med overskridelse av P_lim.
+    """
+    # --- total last
+    load_sum = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_sum += load_time_series_mapped[bus_i].to_numpy()
+    load_sum += new_load_time_series
+
+    # --- overskridelse
+    exceedance = load_sum - P_lim
+    exceedance[exceedance < 0] = 0
+
+    # --- finn sammenhengende perioder med overskridelse
+    episodes = []
+    in_episode = False
+    start = None
+
+    for t in range(len(exceedance)):
+        if exceedance[t] > 0 and not in_episode:
+            in_episode = True
+            start = t
+        elif exceedance[t] == 0 and in_episode:
+            in_episode = False
+            end = t
+            episodes.append((start, end))
+
+    # hvis siste periode går til slutten av året
+    if in_episode:
+        episodes.append((start, len(exceedance)))
+
+    # --- hent peaks og varigheter
+    peaks = []
+    durations = []
+    for start, end in episodes:
+        segment = exceedance[start:end]
+        peaks.append(segment.max())
+        durations.append(len(segment))
+
+    # --- scatterplott
+    plt.figure(figsize=(8,6))
+    plt.scatter(durations, peaks, color="darkorange", alpha=0.7, edgecolor="k")
+    plt.xlabel("Duration of overload episode (h)")
+    plt.ylabel("Overload peak (MW)")
+    plt.title("Overload peak vs duration of overload episodes")
+    plt.grid(True)
+    plt.show()
+
+    # --- resultat som DataFrame
+    results = pd.DataFrame({
+        "Episode": range(1, len(peaks)+1),
+        "Duration (h)": durations,
+        "Overload peak (MW)": peaks
+    })
+
+    print("=== Overload episodes ===")
+    print(results)
+
+    return results
+
+def scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim):
+    """
+    Lager et scatterplott med peak overload (MW) for hver overload-episode,
+    plassert i måneden hvor episoden starter.
+    """
+    # --- total last
+    load_sum = np.zeros(8760)
+    for bus_i in bus_i_subset:
+        load_sum += load_time_series_mapped[bus_i].to_numpy()
+    load_sum += new_load_time_series
+
+    # --- overskridelse
+    exceedance = load_sum - P_lim
+    exceedance[exceedance < 0] = 0
+
+    # --- månedindeks (2019 = normalår 365 dager, 8760 timer)
+    days_in_month = [31,28,31,30,31,30,31,31,30,31,30,31]
+    hours_in_month = [d*24 for d in days_in_month]
+    month_index = np.concatenate([np.full(h, m+1) for m, h in enumerate(hours_in_month)])
+
+    # --- finn episoder
+    episodes = []
+    in_episode = False
+    start = None
+    for t in range(len(exceedance)):
+        if exceedance[t] > 0 and not in_episode:
+            in_episode = True
+            start = t
+        elif exceedance[t] == 0 and in_episode:
+            in_episode = False
+            end = t
+            episodes.append((start, end))
+    if in_episode:
+        episodes.append((start, len(exceedance)))
+
+    # --- hent peak og måned for hver episode
+    peaks = []
+    months = []
+    for start, end in episodes:
+        segment = exceedance[start:end]
+        peak = segment.max()
+        month = month_index[start]  # måned ved start
+        if peak > 0:
+            peaks.append(peak)
+            months.append(month)
+
+    # --- scatterplott
+    plt.figure(figsize=(10,6))
+    plt.scatter(months, peaks, color="darkorange", alpha=0.7, edgecolor="k")
+    plt.xticks(range(1,13), ["Jan","Feb","Mar","Apr","May","Jun",
+                             "Jul","Aug","Sep","Oct","Nov","Dec"])
+    plt.xlabel("Month")
+    plt.ylabel("Peak overload (MW)")
+    plt.title("Overload episodes: peak per month")
+    plt.grid(True)
+    plt.show()
+
+    # --- resultattabell
+    results = pd.DataFrame({
+        "Month": months,
+        "Peak overload (MW)": peaks
+    })
+    return results
+
 ################## Task 12 ####################
 
 # Teorioppgave
@@ -662,12 +788,12 @@ def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_t
 
 ################### Main code Execution ####################
 
-#loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
-#                                                  bus_i_subset,  
-#                                                  i_time_series_new_load,
-#                                                  P_lim = None, 
-#                                                  new_load_time_series = None,
-#                                                  which_plots=("total"))
+loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
+                                                  bus_i_subset,  
+                                                  i_time_series_new_load,
+                                                  P_lim = P_lim, 
+                                                  new_load_time_series = new_load_time_series,
+                                                  which_plots=("total"))
 
 #plot_voltage_profile(net)  
 #table = make_load_table(net, bus_i_subset)
@@ -681,3 +807,7 @@ def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_t
 #compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4)
 
 #characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim)
+
+scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim)
+
+scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim)
