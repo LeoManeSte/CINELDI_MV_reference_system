@@ -219,6 +219,10 @@ def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, 
 
 #################### Task 3 and Task 4 ####################
 
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import cm
+
 def plot_area_load_time_series(load_time_series_mapped, 
                                bus_i_subset, 
                                i_time_series_new_load,
@@ -228,7 +232,7 @@ def plot_area_load_time_series(load_time_series_mapped,
     """
     Plot load time series for selected buses in the area + new load, total load, 
     and smoothed total load, in separate subplots. 
-    Each curve gets a unique color.
+    Each curve gets a unique color that stays consistent regardless of number of plots.
     
     'total' plot is always placed at the top if selected.
     """
@@ -258,29 +262,32 @@ def plot_area_load_time_series(load_time_series_mapped,
     plot_idx = 0
     load_sum = np.zeros(8760)
 
-    # color map
-    colors = cm.get_cmap("tab10", n_plots).colors  
+    # --- fixed color mapping
+    cmap = cm.get_cmap("tab10")
+    color_map = {}
+    color_map["total"] = cmap(0)
+    color_map["smooth"] = cmap(1)
+    color_map["new_load"] = cmap(2)
+    for i, bus_i in enumerate(bus_i_subset):
+        color_map[f"bus_{bus_i}"] = cmap(3 + i % 7)  # rotate if > 7 buses
 
     # --- draw in desired order
     for key in ordered_plots:
         if key == "total":
-            # compute sum first
             for bus_i in bus_i_subset:
                 load_sum += load_time_series_mapped[bus_i].to_numpy()
-
             if new_load_time_series is not None:
                 load_sum += new_load_time_series
 
-            if P_lim is not None:
-                axes[plot_idx].axhline(P_lim, color='r', linestyle='--', label=f'Power flow limit {P_lim:.3f} MW')
-
             ax_total = axes[plot_idx]
-            ax_total.plot(load_sum, color=colors[plot_idx], label='Total load in area')
+            ax_total.plot(load_sum, color=color_map["total"], label='Total load in area')
             ax_total.plot(load_sum.argmax(), load_sum.max(), 'o', color='red')
             ax_total.annotate(f'{load_sum.max():.4f} MW', 
                               xy=(load_sum.argmax(), load_sum.max()), 
                               xytext=(5,0), textcoords='offset points',
                               fontsize=8, color='black', ha='left', va='center')
+            if P_lim is not None:
+                ax_total.axhline(P_lim, color='r', linestyle='--', label=f'Power flow limit {P_lim:.3f} MW')
             ax_total.set_ylabel("MW")
             ax_total.legend(loc='upper left')
             ax_total.grid(True)
@@ -290,7 +297,7 @@ def plot_area_load_time_series(load_time_series_mapped,
             for bus_i in bus_i_subset:
                 ax = axes[plot_idx]
                 series = load_time_series_mapped[bus_i]
-                ax.plot(series, color=colors[plot_idx], label=f'Bus {bus_i}')
+                ax.plot(series, color=color_map[f"bus_{bus_i}"], label=f'Bus {bus_i}')
                 
                 max_val = series.max()
                 max_hour = series.idxmax()
@@ -306,7 +313,7 @@ def plot_area_load_time_series(load_time_series_mapped,
 
         elif key == "new_load":
             ax_new = axes[plot_idx]
-            ax_new.plot(new_load_time_series, '--', color=colors[plot_idx], 
+            ax_new.plot(new_load_time_series, '-', color=color_map["new_load"], 
                         label=f'New load (bus {i_time_series_new_load})')
 
             max_val = new_load_time_series.max()
@@ -330,7 +337,7 @@ def plot_area_load_time_series(load_time_series_mapped,
             load_sum_smooth = np.convolve(load_sum_padded, window, mode='valid')
 
             ax_smooth = axes[plot_idx]
-            ax_smooth.plot(load_sum_smooth, color=colors[plot_idx], 
+            ax_smooth.plot(load_sum_smooth, color=color_map["smooth"], 
                            label='Total load in area (smoothed)')
             ax_smooth.set_ylabel("MW")
             ax_smooth.set_xlabel("Hour of the year")
@@ -343,6 +350,7 @@ def plot_area_load_time_series(load_time_series_mapped,
     plt.show()
 
     return load_sum, load_sum_smooth if "smooth" in ordered_plots else None
+
 
 def make_load_table(net, bus_i_subset):
     """
@@ -1004,7 +1012,14 @@ loadsum, _ = plot_area_load_time_series(load_time_series_mapped,
                                                   i_time_series_new_load,
                                                   P_lim = P_lim, 
                                                   new_load_time_series = new_load_time_series,
-                                                  which_plots=("total"))
+                                                  which_plots=("new_load", "buses", "total"))
+
+loadsum, _ = plot_area_load_time_series(load_time_series_mapped, 
+                                                  bus_i_subset,  
+                                                  i_time_series_new_load,
+                                                  P_lim = P_lim, 
+                                                  new_load_time_series = new_load_time_series,
+                                                  which_plots=("new_load", "buses"))
 
 #plot_voltage_profile(net) 
 #  
