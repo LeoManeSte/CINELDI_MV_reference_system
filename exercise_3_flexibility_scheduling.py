@@ -118,6 +118,8 @@ res_df = pd.DataFrame({
     'Import': [pyo.value(model.P_imp[t]) for t in T],
     'Export': [pyo.value(model.P_exp[t]) for t in T],
     'Price': [pyo.value(model.price[t]) for t in T],
+    'Net_load_PV': [pyo.value(model.base[t] - model.pv[t]) for t in T],
+    'Net_load_PV_Battery': [pyo.value(model.base[t] - model.pv[t] - model.P_dis[t] + model.P_ch[t]) for t in T],
 })
 
 total_cost = res_df['Import'].dot(res_df['Price']) - res_df['Export'].dot(res_df['Price']*sell_price_factor)
@@ -202,3 +204,24 @@ for ax in axs:
 
 plt.tight_layout()
 plt.show()
+
+
+# plot net load_profile with and without battery
+plt.figure(figsize=(14, 6))
+x, y = stepify_centered(res_df["Hour"].values, res_df["Net_load_PV"].values)
+plt.step(x, y, label="Net load (Load - PV)", where="post", color="tab:blue", linewidth=2)   
+x, y = stepify_centered(res_df["Hour"].values, res_df["Net_load_PV_Battery"].values)
+plt.step(x, y, label="Net load with battery (Load - PV - Discharging + Charging)", where="post", color="tab:orange", linewidth=2)
+plt.title("Net load profile with and without battery", fontsize=14, fontweight="bold")
+plt.ylabel("Power [kW]")
+plt.xlabel("Hour")
+plt.legend()
+plt.grid(True, linestyle="--", alpha=0.7)
+plt.xlim(0, 24)  # dekker [0.0, 24.0]
+plt.ylim(min(0, min(res_df["Net_load_PV"].min(), res_df["Net_load_PV_Battery"].min()) - 1), 
+         max(res_df["Net_load_PV"].max(), res_df["Net_load_PV_Battery"].max()) + 1)
+plt.xticks(np.arange(0, 25, step=1))
+plt.yticks(np.arange(0, max(res_df["Net_load_PV"].max(), res_df["Net_load_PV_Battery"].max()) + 1, step=1))
+plt.tight_layout()
+plt.show()
+#%%
