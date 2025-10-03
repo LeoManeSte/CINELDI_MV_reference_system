@@ -65,12 +65,14 @@ model.price = pyo.Param(model.T, initialize=dict_Prices)
 model.base  = pyo.Param(model.T, initialize=dict_Base_load)
 model.pv    = pyo.Param(model.T, initialize=dict_PV_prod)
 
+Pcap = 10000 # large value to ensure no constraints are violated
 # Vars
 model.P_ch   = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, charging_power_limit))
 model.P_dis  = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, discharging_power_limit))
 model.SOC    = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, capacity))
-model.P_imp  = pyo.Var(model.T, domain=pyo.NonNegativeReals)  # grid import
+model.P_imp  = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, Pcap))  # grid import
 model.P_exp  = pyo.Var(model.T, domain=pyo.NonNegativeReals)  # grid export
+
 
 # ensure power to grid * power from grid = 0
 model.no_simultaneous_grid = pyo.ConstraintList()
@@ -201,7 +203,6 @@ axs[-1].set_xlim(0, 24)  # dekker [0.0, 24.0]
 for ax in axs:
     ax.tick_params(axis="both", labelsize=11)
 
-
 plt.tight_layout()
 plt.show()
 
@@ -219,9 +220,48 @@ plt.legend()
 plt.grid(True, linestyle="--", alpha=0.7)
 plt.xlim(0, 24)  # dekker [0.0, 24.0]
 plt.ylim(min(0, min(res_df["Net_load_PV"].min(), res_df["Net_load_PV_Battery"].min()) - 1), 
-         max(res_df["Net_load_PV"].max(), res_df["Net_load_PV_Battery"].max()) + 1)
+         max(res_df["Net_load_PV"].max(), res_df["Net_load_PV_Battery"].max()) + 1) 
 plt.xticks(np.arange(0, 25, step=1))
 plt.yticks(np.arange(0, max(res_df["Net_load_PV"].max(), res_df["Net_load_PV_Battery"].max()) + 1, step=1))
 plt.tight_layout()
-plt.show()
+#plt.show()
 #%%
+
+# make a new figure with state of charge on one axis and electricity price on the other axis
+fig, ax1 = plt.subplots(figsize=(14, 6))
+ax2 = ax1.twinx()
+x, y = stepify_centered(res_df["Hour"].values, res_df["SOC"].values)
+ax1.step(x, y, label="State of Charge (SoC)", where="post", color="tab:blue", linewidth=2)
+x, y = stepify_centered(res_df["Hour"].values, res_df["Price"].values)
+ax2.step(x, y, label="Price", where="post", color="black", linestyle="--", linewidth=2)
+ax1.set_title("Battery State of Charge and Electricity Price", fontsize=14, fontweight="bold")
+ax1.set_ylabel("State of Charge [kWh]", color="black")
+ax2.set_ylabel("Price [currency/kWh]", color="black")
+ax1.set_xlabel("Hour")
+# legender
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+ax1.grid(True, linestyle="--", alpha=0.7)
+# layout
+ax1.set_xlim(0, 24)  # dekker [0.0, 24.0]
+ax1.tick_params(axis="both", labelsize=11)
+plt.tight_layout()
+#plt.show()
+# %%
+
+
+# kontroller at energien til batteriet er litt større enn energien som er levert fra batteriet
+total_charged_energy = res_df['P_ch'].sum()
+total_discharged_energy = res_df['P_dis'].sum()
+print(f"Total charged energy: {total_charged_energy:.2f} kWh")
+print(f"Total discharged energy: {total_discharged_energy:.2f} kWh")
+# calculate energy efficiency
+if total_charged_energy > 0:
+    energy_efficiency = total_discharged_energy / total_charged_energy
+    print(f"Energy efficiency: {energy_efficiency*100:.4f} %")
+else:
+    print("No energy charged, cannot calculate efficiency.")
+
+# assert actual total efficiency of bettery
+assert np.isclose(energy_efficiency, charging_efficiency * discharging_efficiency, atol=1e-4), "Energy efficiency does not match expected value."
