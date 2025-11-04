@@ -91,7 +91,6 @@ def plot_voltage_profile(net):
 
     base_vm = net.res_bus["vm_pu"].copy()
 
-    # 3) Build graph and find the **longest feeder** (leaf path from slack)
     graph = nx.Graph()
     graph.add_nodes_from(net.bus.index)
     for _, ln in net.line.iterrows():
@@ -110,16 +109,13 @@ def plot_voltage_profile(net):
     path = feeders[0][1]
     end_name = feeders[0][2]
 
-    # 4) Figure and layout (GridSpec: plot on top, controls below)
     fig = plt.figure(figsize=(12, 8))
     gs = gridspec.GridSpec(2, 1, height_ratios=[4.5, 1.2], figure=fig)
     ax = fig.add_subplot(gs[0])
 
 
-    # Curves
     x = np.arange(len(path))
     ax.plot(x, base_vm[path], "o-", label="Voltage Profile", color="C0")
-    # mark minimum voltage and mark the value
     vmin = base_vm[path].min()
     ax.scatter(x[base_vm[path].argmin()], vmin, color="red", zorder=5)
     ax.annotate(f"{vmin:.4f} p.u.", xy=(x[base_vm[path].argmin()-1], vmin), xytext=(0,5), textcoords="offset points", fontsize=8, color="black")
@@ -137,32 +133,11 @@ def plot_voltage_profile(net):
 #################### Task 2 ####################
 
 def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, v_limit=0.95, P_lim = P_lim):
-    """
-    Analyserer spenningsnivået i et område når lasten økes.
-    
-    Parametre
-    ---------
-    net : pandapowerNet
-        Nettmodellen.
-    bus_i_subset : list
-        Liste med buss-IDer i området.
-    scaling_range : tuple
-        (min, max) for skaleringsfaktorene. Default (1,2).
-    steps : int
-        Antall punkter i skaleringen. Default 11.
-    v_limit : float
-        Nedre spenningsgrense (p.u.). Default 0.95.
-    
-    Returnerer
-    ----------
-    results_df : pandas.DataFrame
-        Tabell med aggregerte laster og laveste spenninger.
-    """
+
     scaling_factors = np.linspace(scaling_range[0], scaling_range[1], steps)
     lowest_voltages = []
     agg_loads = []
 
-    # --- hent basislaster
     base_loads = net.load.loc[net.load.bus.isin(bus_i_subset), ["bus", "p_mw"]].copy()
     base_loads["bus_name"] = base_loads["bus"].map(lambda b: net.bus.loc[b, "name"])
 
@@ -170,13 +145,10 @@ def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, 
     print(base_loads[["bus_name", "p_mw"]])
     print("Sum (MW):", base_loads["p_mw"].sum())
 
-    # --- skaler laster og kjør power flow
     for sf in scaling_factors:
-        # skaler opp
         for load_idx in net.load.index[net.load.bus.isin(bus_i_subset)]:
             net.load.at[load_idx, "p_mw"] = base_loads.loc[base_loads.bus == net.load.at[load_idx, "bus"], "p_mw"].values[0] * sf
 
-        # kjør kraftflyt
         pp.runpp(net)
         vmin = net.res_bus.loc[bus_i_subset, "vm_pu"].min()
         p_sum = net.load.loc[net.load.bus.isin(bus_i_subset), "p_mw"].sum()
@@ -184,27 +156,22 @@ def analyze_voltage_capacity(net, bus_i_subset, scaling_range=(1, 2), steps=11, 
         lowest_voltages.append(vmin)
         agg_loads.append(p_sum)
 
-    # --- tabell med resultater
     results_df = pd.DataFrame({
         "Scaling factor": scaling_factors,
         "Aggregated load (MW)": agg_loads,
         "Lowest voltage (p.u.)": lowest_voltages
     })
 
-    # add vertical line that intersects the voltage limit and Lowest voltage curve
     if P_lim is not None:
-        # finn hvor spenningsgrensen krysses
         below_limit = results_df[results_df["Lowest voltage (p.u.)"] < v_limit]
         if not below_limit.empty:
             P_lim_cross = below_limit.iloc[0]["Aggregated load (MW)"]
 
-    # --- plott
     plt.figure(figsize=(8,5))
     plt.plot(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], "o-", label="Lowest voltage (Bus 96)")
     plt.axhline(v_limit, color="r", linestyle="--", label=f"Voltage limit ({v_limit} p.u.)")
     plt.axvline(P_lim, color="purple", linestyle="--", label=f"Power flow limit ({P_lim:.3f} MW)")
     plt.axvline(P_lim_cross, color="green", linestyle="--", label=f"Power flow limit ({P_lim_cross:.3f} MW)")
-    # marker skaleringsfaktor ved punktene
     for x, y, sf in zip(results_df["Aggregated load (MW)"], results_df["Lowest voltage (p.u.)"], results_df["Scaling factor"]):
         plt.annotate(f"{sf:.2f}", (x, y), textcoords="offset points", xytext=(5,5), fontsize=8, color="black")
     
@@ -229,14 +196,7 @@ def plot_area_load_time_series(load_time_series_mapped,
                                P_lim = None,  
                                new_load_time_series = None,
                                which_plots=("buses", "new_load", "total", "smooth")):
-    """
-    Plot load time series for selected buses in the area + new load, total load, 
-    and smoothed total load, in separate subplots. 
-    Each curve gets a unique color that stays consistent regardless of number of plots.
-    
-    'total' plot is always placed at the top if selected.
-    """
-    # --- ensure "total" is plotted first if present
+
     ordered_plots = []
     if "total" in which_plots:
         ordered_plots.append("total")
@@ -244,7 +204,6 @@ def plot_area_load_time_series(load_time_series_mapped,
         if key in which_plots:
             ordered_plots.append(key)
 
-    # count how many subplots
     n_plots = 0
     if "buses" in ordered_plots:
         n_plots += len(bus_i_subset)
@@ -262,16 +221,14 @@ def plot_area_load_time_series(load_time_series_mapped,
     plot_idx = 0
     load_sum = np.zeros(8760)
 
-    # --- fixed color mapping
     cmap = cm.get_cmap("tab10")
     color_map = {}
     color_map["total"] = cmap(0)
     color_map["smooth"] = cmap(1)
     color_map["new_load"] = cmap(2)
     for i, bus_i in enumerate(bus_i_subset):
-        color_map[f"bus_{bus_i}"] = cmap(3 + i % 7)  # rotate if > 7 buses
+        color_map[f"bus_{bus_i}"] = cmap(3 + i % 7)  
 
-    # --- draw in desired order
     for key in ordered_plots:
         if key == "total":
             for bus_i in bus_i_subset:
@@ -448,7 +405,7 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 
 ##################### Task 7 ####################
 
-# Analytisk?
+#Analytisk
 
 #################### Task 8 ####################
 
@@ -465,25 +422,17 @@ def make_load_profile(load_sum, P_lim=None, mark_energy=False, mark_utilization_
 ################# Task 11 ####################
 
 def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim):
-    """
-    Karakteriserer fleksibilitetsbehovet når tidsavhengig ny last legges til området.
-    Visualiserer behovet på en Load Duration Curve (LDC).
-    """
-    # --- total last i området (eksisterende + ny last)
     load_sum = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_sum += load_time_series_mapped[bus_i].to_numpy()
     load_sum += new_load_time_series
 
-    # --- overskridelser
     exceedance = load_sum - P_lim
     exceedance[exceedance < 0] = 0
 
-    # sorter nedover = LDC for overskridelse
     exceed_sorted = np.sort(exceedance)[::-1]
     hours = np.arange(0, len(exceed_sorted))
 
-    # --- nøkkelverdier
     capacity = exceed_sorted[0]                   # MW
     duration = np.count_nonzero(exceed_sorted)    # timer (inkluderer timen der det akkurat overskrides)
     energy = exceed_sorted.sum()                  # MWh
@@ -498,15 +447,12 @@ def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_t
     for k, v in results.items():
         print(f"{k}: {v:.3f}")
 
-    # --- visualisering på LDC
     fig, ax = plt.subplots(figsize=(10,6))
     ax.plot(hours, exceed_sorted, label="Flexibility need", color="orange")
 
-    # marker energi (areal)
     ax.fill_between(hours, exceed_sorted, color="orange", alpha=0.3,
                     label=f"Flexibility energy need = {energy:.1f} MWh")
 
-    # marker maks kapasitet
     ax.plot(0, capacity, "ro")
     ax.annotate(f"Max Flexibility capacity = {capacity:.3f} MW",
                 xy=(0, capacity),
@@ -514,7 +460,6 @@ def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_t
                 arrowprops=dict(arrowstyle="->", color="red"),
                 color="red")
 
-    # marker service duration
     ax.axvline(duration, color="purple", linestyle="--", label=f"Service duration = {duration} h")
     ax.annotate(f"{duration} h", 
                 xy=(duration, 0),
@@ -533,21 +478,15 @@ def characterize_flex_need_ldc(load_time_series_mapped, bus_i_subset, new_load_t
     return results
 
 def scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new_load_time_series, P_lim):
-    """
-    Lager et scatterplott med overload peak (MW) som funksjon av utetid (h)
-    for perioder med overskridelse av P_lim.
-    """
-    # --- total last
+
     load_sum = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_sum += load_time_series_mapped[bus_i].to_numpy()
     load_sum += new_load_time_series
 
-    # --- overskridelse
     exceedance = load_sum - P_lim
     exceedance[exceedance < 0] = 0
 
-    # --- finn sammenhengende perioder med overskridelse
     episodes = []
     in_episode = False
     start = None
@@ -561,11 +500,9 @@ def scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new
             end = t
             episodes.append((start, end))
 
-    # hvis siste periode går til slutten av året
     if in_episode:
         episodes.append((start, len(exceedance)))
 
-    # --- hent peaks og varigheter
     peaks = []
     durations = []
     for start, end in episodes:
@@ -573,7 +510,6 @@ def scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new
         peaks.append(segment.max())
         durations.append(len(segment))
 
-    # --- scatterplott
     plt.figure(figsize=(8,6))
     plt.scatter(durations, peaks, color="darkorange", alpha=0.7, edgecolor="k")
     plt.xlabel("Duration of overload episode (h)")
@@ -582,7 +518,6 @@ def scatter_overload_peak_vs_duration(load_time_series_mapped, bus_i_subset, new
     plt.grid(True)
     plt.show()
 
-    # --- resultat som DataFrame
     results = pd.DataFrame({
         "Episode": range(1, len(peaks)+1),
         "Duration (h)": durations,
@@ -599,22 +534,18 @@ def scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_l
     Lager et scatterplott med peak overload (MW) for hver overload-episode,
     plassert i måneden hvor episoden starter.
     """
-    # --- total last
     load_sum = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_sum += load_time_series_mapped[bus_i].to_numpy()
     load_sum += new_load_time_series
 
-    # --- overskridelse
     exceedance = load_sum - P_lim
     exceedance[exceedance < 0] = 0
 
-    # --- månedindeks (2019 = normalår 365 dager, 8760 timer)
     days_in_month = [31,28,31,30,31,30,31,31,30,31,30,31]
     hours_in_month = [d*24 for d in days_in_month]
     month_index = np.concatenate([np.full(h, m+1) for m, h in enumerate(hours_in_month)])
 
-    # --- finn episoder
     episodes = []
     in_episode = False
     start = None
@@ -629,7 +560,6 @@ def scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_l
     if in_episode:
         episodes.append((start, len(exceedance)))
 
-    # --- hent peak og måned for hver episode
     peaks = []
     months = []
     for start, end in episodes:
@@ -640,7 +570,6 @@ def scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_l
             peaks.append(peak)
             months.append(month)
 
-    # --- scatterplott
     plt.figure(figsize=(10,6))
     plt.scatter(months, peaks, color="darkorange", alpha=0.7, edgecolor="k")
     plt.xticks(range(1,13), ["Jan","Feb","Mar","Apr","May","Jun",
@@ -665,54 +594,30 @@ def scatter_overload_peaks_by_month(load_time_series_mapped, bus_i_subset, new_l
 ################## Task 13 ####################
 
 def compare_ldcs(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4, P_lim=None):
-    """
-    Sammenlikner tre Load Duration Curves (LDCs):
-      a) Eksisterende laster (uten ny last)
-      b) Eksisterende + tidsavhengig ny last
-      c) Eksisterende + konstant ny last (P_const MW hele året)
-    
-    Parametre
-    ---------
-    load_time_series_mapped : DataFrame
-        Tidsserier for lastene i nettet (kolonner = busser, rader = timer).
-    bus_i_subset : list
-        Hvilke busser i området som skal inkluderes i summen.
-    new_load_time_series : array-like
-        Tidsserien (8760 elementer) for den tidsavhengige nye lasten.
-    P_const : float
-        Konstant last (MW) for det tredje scenariet. Default = 0.4 MW.
-    P_lim : float eller None
-        Eventuell grense som tegnes inn i plottet (MW).
-    """
-    # --- Eksisterende laster
+
     load_existing = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_existing += load_time_series_mapped[bus_i].to_numpy()
 
-    # --- Med tidsavhengig ny last
     load_with_new = load_existing + new_load_time_series
 
-    # --- Med konstant ny last
     load_with_const = load_existing + P_const
 
-    # --- LDCs (sorter nedover)
     ldc_existing = np.sort(load_existing)[::-1]
     ldc_with_new = np.sort(load_with_new)[::-1]
     ldc_with_const = np.sort(load_with_const)[::-1]
     hours = np.arange(1, 8761)
 
-    # --- Plot
     plt.figure(figsize=(10,6))
     plt.plot(hours, ldc_with_const, label=f"a) With constant new load ({P_const:.1f} MW)")
     plt.plot(hours, ldc_with_new, label="b) With time-dependent new load")
     plt.plot(hours, ldc_existing, label="c) Existing loads only")
     
-    
 
     if P_lim is not None:
         plt.axhline(P_lim, color="r", linestyle="--", label=f"Power flow limit {P_lim:.3f} MW")
 
-        # mark hours exceeding limit for each scenario
+
         for ldc, label in zip([ldc_with_new, ldc_with_const],
                               ["With time-dependent new load", f"With constant new load ({P_const:.1f} MW)"]):
             hours_exceeding = np.sum(ldc > P_lim)
@@ -734,29 +639,18 @@ def compare_ldcs(load_time_series_mapped, bus_i_subset, new_load_time_series, P_
 ################## Task 14 ####################
 
 def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4):
-    """
-    Beregner og sammenlikner utnyttelsestid og samtidighetsfaktor for tre scenarier:
-      a) Eksisterende laster
-      b) Eksisterende + tidsavhengig ny last
-      c) Eksisterende + konstant ny last
-    
-    Lager en tabell og to søyleplott med verdier på toppen.
-    """
-    # --- Basis: eksisterende laster
+
     load_existing = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_existing += load_time_series_mapped[bus_i].to_numpy()
 
-    # --- Med tidsavhengig ny last
     load_with_new = load_existing + new_load_time_series
 
-    # --- Med konstant ny last
     load_with_const = load_existing + P_const
 
-    # --- Funksjon for metrics
     def metrics(load_area, loads_per_bus=None, add_const=None, add_series=None):
         P_max = load_area.max()
-        E = load_area.sum()  # MWh
+        E = load_area.sum() 
         T_util = E / P_max
 
         if loads_per_bus is None:
@@ -771,13 +665,10 @@ def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_t
         CF = P_max / Pmax_sum
         return T_util, CF
 
-    # --- Beregn alle tre scenarier
     T_util_a, CF_a = metrics(load_with_const, add_const=P_const)
     T_util_b, CF_b = metrics(load_with_new, add_series=new_load_time_series)
     T_util_c, CF_c = metrics(load_existing)
     
-
-    # --- Tabell
     results = pd.DataFrame({
         "Scenario": [f"a) With constant {P_const:.1f} MW new load", "b) With time-dependent new load", "c) Existing"],
         "Utilization time (h)": [T_util_a, T_util_b, T_util_c],
@@ -787,33 +678,28 @@ def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_t
 
     print(results)
 
-    # --- Søyleplott: Utnyttelsestid
     plt.figure(figsize=(7,5))
     bars = plt.bar(results["Scenario"], results["Utilization time (h)"], color=["C0","C1","C2"])
     plt.ylabel("Utilization time [h]")
     plt.title("Comparison of Utilization Time")
     plt.grid(axis="y", linestyle="--", alpha=0.7)
-    # legg til verdier
     for bar in bars:
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01*yval, f"{yval:.0f}", 
                  ha="center", va="bottom", fontsize=9)
     plt.show()
 
-    # --- Søyleplott: Coincidence Factor
     plt.figure(figsize=(7,5))
     bars = plt.bar(results["Scenario"], results["Coincidence factor"], color=["C0","C1","C2"])
     plt.ylabel("Coincidence factor")
     plt.title("Comparison of Coincidence Factors")
     plt.grid(axis="y", linestyle="--", alpha=0.7)
-    # legg til verdier
     for bar in bars:
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01*yval, f"{yval:.3f}", 
                  ha="center", va="bottom", fontsize=9)
     plt.show()
 
-    # lagre resultatene i latex tabellformat og skriv til fil
     latex_table = results.to_latex(index=False, float_format="%.3f")
     with open("utilization_and_cf_table.tex", "w") as f:
         f.write(latex_table)
@@ -827,16 +713,6 @@ def compare_utilization_and_cf(load_time_series_mapped, bus_i_subset, new_load_t
     return results
 
 def compare_utilization_and_cf_verbose(load_time_series_mapped, bus_i_subset, new_load_time_series, P_const=0.4):
-    """
-    Samme som før, men skriver ut ALLE mellomregninger:
-    - P_max
-    - E (energi)
-    - T_util
-    - P_i,max per buss
-    - Eventuelle tillegg (konstant eller tidsavhengig last)
-    - Sum P_i,max
-    - CF
-    """
     load_existing = np.zeros(8760)
     for bus_i in bus_i_subset:
         load_existing += load_time_series_mapped[bus_i].to_numpy()
@@ -855,14 +731,12 @@ def compare_utilization_and_cf_verbose(load_time_series_mapped, bus_i_subset, ne
         Pmax_per_bus = [ld.max() for ld in loads_per_bus]
         Pmax_sum = sum(Pmax_per_bus)
 
-        # tillegg
         const_contrib = add_const if add_const is not None else 0
         series_contrib = add_series.max() if add_series is not None else 0
 
         Pmax_total = Pmax_sum + const_contrib + series_contrib
         CF = P_max / Pmax_total
 
-        # print alt
         print(f"--- {name} ---")
         print(f"P_max (system)       = {P_max:.3f} MW")
         print(f"E (energi)           = {E:.3f} MWh")
@@ -880,7 +754,6 @@ def compare_utilization_and_cf_verbose(load_time_series_mapped, bus_i_subset, ne
 
         return T_util, CF
 
-    # Beregn alle scenarier
     T_util_a, CF_a = metrics("a) With constant load", load_with_const, add_const=P_const)
     T_util_b, CF_b = metrics("b) With time-dependent load", load_with_new, add_series=new_load_time_series)
     T_util_c, CF_c = metrics("c) Existing", load_existing)
@@ -897,17 +770,10 @@ def compare_utilization_and_cf_verbose(load_time_series_mapped, bus_i_subset, ne
 ################## Task 15 ####################
 
 def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_time_series, constant_load, P_lim):
-    """
-    Lager en figur med to subplots:
-    (1) Overload peak (MW) vs duration (h)
-    (2) Overload peak (MW) per month
-    Sammenligner new load time series og constant load med to forskjellige farger.
-    """
     def get_overload_episodes(load_sum, P_lim):
         exceedance = load_sum - P_lim
         exceedance[exceedance < 0] = 0
 
-        # finn episoder
         episodes = []
         in_episode = False
         start = None
@@ -922,7 +788,6 @@ def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_
         if in_episode:
             episodes.append((start, len(exceedance)))
 
-        # hent peaks og varigheter
         peaks = []
         durations = []
         months = []
@@ -952,10 +817,8 @@ def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_
     peaks_new, durations_new, months_new = get_overload_episodes(load_new, P_lim)
     peaks_const, durations_const, months_const = get_overload_episodes(load_const, P_lim)
 
-    # plotting
     fig, axes = plt.subplots(1, 2, figsize=(14,6))
 
-    # --- subplot 1: peak vs duration
     axes[0].scatter(durations_new, peaks_new, color="darkorange", alpha=0.9, edgecolor="k", label="New load")
     axes[0].scatter(durations_const, peaks_const, color="steelblue", alpha=0.7, edgecolor="k", label="Constant load")
     axes[0].set_xlabel("Duration of overload episode (h)")
@@ -964,7 +827,6 @@ def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_
     axes[0].grid(True)
     axes[0].legend()
 
-    # --- subplot 2: peaks by month
     axes[1].scatter(months_new, peaks_new, color="darkorange", alpha=0.9, edgecolor="k", label="scenario a) New load time series")
     axes[1].scatter(months_const, peaks_const, color="steelblue", alpha=0.7, edgecolor="k", label="scenario b) Constant load 0.4 MW")
     axes[1].set_xticks(range(1,13))
@@ -979,7 +841,6 @@ def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_
     plt.tight_layout()
     plt.show()
 
-    # resultater i DataFrames
     results_new = pd.DataFrame({
         "Episode": range(1, len(peaks_new)+1),
         "Duration (h)": durations_new,
@@ -1002,8 +863,6 @@ def scatter_overload_comparison(load_time_series_mapped, bus_i_subset, new_load_
 
 
 # Teorioppgave
-
-
 
 ################### Main code Execution ####################
 

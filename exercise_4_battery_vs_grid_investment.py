@@ -9,6 +9,11 @@ Forutsetter at datasettet og hjelpefiler ligger lokalt (se path_data_set).
 import os, numpy as np, pandas as pd, matplotlib.pyplot as plt
 import load_profiles as lp
 import pandapower_read_csv as ppcsv
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import pandas as pd
+import numpy as np
 
 # %% Input / data
 path_data_set = 'CINELDI_MV_reference_system_v_2023-03-06/'
@@ -43,7 +48,6 @@ agg_area = (load_ts[bus_i_subset] * scaling_factor).sum(axis=1)     # 24t serie 
 P_max0 = float(agg_area.max())
 print(f"\n[Oppg.2] Startverdi topp-last i området (dagens verdi): {P_max0:.3f} MW")
 
-# %% Hjelpefunksjoner (små og gjenbrukbare)
 def step_peak_growth(P0, g=growth, Y=years_hor):
     y = np.arange(0, Y+1)
     return y, P0*(1+g)**y
@@ -75,50 +79,36 @@ def pv(cost, r=disc_rate, t=1):
     return pv_
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-
 sns.set_style("whitegrid")
 
 def pv_corrected(cost, r=0.04, t=1, life=40, horiz=20):
-    # Beregning av residualverdi
     RV = cost * (1 - (horiz - t) / life)
     print(f"\n[Oppg.5] Residualverdi etter {horiz} år: {RV:,.0f} NOK")
     
-    # Nåverdi
     PV_inv = cost / ((1 + r) ** t)
     PV_res = RV / ((1 + r) ** horiz)
     PV_corr = PV_inv - PV_res
     
-    # Tidsakse og verdiforløp
     years = np.arange(t, t + life + 1)
     values = cost * (1 - (years - t) / life)
     values[values < 0] = 0
 
-    # Slutt på teknisk levetid
     t_end = t + life
 
-    # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(years, values, color='#1f77b4', linewidth=2.2)
 
-    # Investeringspunkt
     ax.axvline(t, color='black', linestyle=':', linewidth=1)
     ax.scatter([t], [cost], color='black', s=60, zorder=5)
 
-    # Analyseperiode slutt
     ax.axvline(horiz, color='red', linestyle='--', linewidth=1)
     ax.scatter([horiz], [RV], color='green', s=60, zorder=5)
 
-    # Teknisk levetid slutt
     ax.axvline(t_end, color='gray', linestyle='-.', linewidth=1)
     ax.scatter([t_end], [0], color='gray', s=50, zorder=5)
 
-    # Residualverdi linje
     ax.axhline(RV, color='green', linestyle='--', linewidth=1)
 
-    # Tekst direkte i plottet
     ax.text(t + 0.5, cost * 1.02, f"Investment\n{cost:,.0f} NOK",
             ha='left', va='bottom', fontsize=10, color='black',
             bbox=dict(facecolor='white', edgecolor='none', alpha=0.7))
@@ -131,7 +121,6 @@ def pv_corrected(cost, r=0.04, t=1, life=40, horiz=20):
             ha='left', va='bottom', fontsize=10, color='gray',
             bbox=dict(facecolor='white', edgecolor='none', alpha=0.7))
 
-    # Aksetilpasning
     ax.set_xlabel('t (time)', fontsize=12)
     ax.set_ylabel('Value (NOK)', fontsize=12)
     ax.spines['top'].set_visible(False)
@@ -150,16 +139,15 @@ def compare_with_battery(P0, P_lim, g=growth, Y=years_hor, batt_shift_MW=1.0):
     y_no = np.argmax(P_no>P_lim); y_bt = np.argmax(P_bt>P_lim)
     plt.figure(figsize=(8,4))
     plt.step(np.append(y,y[-1]+1), np.append(P_no,P_no[-1]), where='post', lw=2, label='Without battery (Alt.A)')
-    # standard blue color is called: 'C0' in matplotlib
+    
     plt.step(np.append(y,y[-1]+1), np.append(P_bt,P_bt[-1]), where='post', lw=2, ls='--', label=f'With {batt_shift_MW:.0f} MW battery (Alt.B)', color='C0')
     plt.axhline(P_lim, ls='--', color='r', label=f'Power transfer limit: {P_lim:.1f} MW')
-    # marker hvert år langs x-aksen med ticks
-    # marker hvor den nye kurven krysser grensen på 4 MW
+  
     if P_bt[y_bt] > P_lim:
         plt.scatter(y_bt, P_bt[y_bt], color='r', zorder=5)
         plt.text(y_bt, P_bt[y_bt]+0.05, f'Cross at time t = {y_bt}', color='r')
 
-    # legg til pil som viser at kurven er forskjøvet nedover med batt_shift_MW
+
     plt.annotate('',
                  xy=(y[1], P_no[1]-batt_shift_MW),
                  xytext=(y[1], P_no[1]),
@@ -173,11 +161,6 @@ def compare_with_battery(P0, P_lim, g=growth, Y=years_hor, batt_shift_MW=1.0):
     plt.grid(True, ls=':'); plt.legend(); plt.tight_layout(); plt.show()
     return y_no, y_bt
 
-import pandas as pd
-import numpy as np
-
-import pandas as pd
-import numpy as np
 
 def battery_opex_by_year(
     daily_24h: pd.Series,
@@ -191,16 +174,10 @@ def battery_opex_by_year(
     disc_rate: float = 0.05,
     excel_file: str = "battery_shifted.xlsx"
 ):
-    """
-    Beregner årlige driftskostnader for batteri ved lastforskyving
-    og lagrer timesdata og summer i én Excel-fil.
-    Returnerer kun kostnadstabell (df_cost) som tidligere.
-    """
 
     base = daily_24h.values
     hourly_index = daily_24h.index
 
-    # Start med timekolonne
     all_data = pd.DataFrame({'Hour': hourly_index})
 
     annual_MWh_list = []
@@ -223,7 +200,6 @@ def battery_opex_by_year(
         annual_MWh_list.append(annual_MWh)
         annual_NOK_list.append(annual_NOK)
 
-    # --- Summeringsrader ---
     daily_sum_row = ['Daily_sum'] + [all_data[col].sum() for col in all_data.columns[1:]]
     annual_sum_row = ['Annual_sum'] + annual_MWh_list
     total_sum_val = sum(annual_MWh_list)
@@ -232,7 +208,6 @@ def battery_opex_by_year(
     summary_df = pd.DataFrame([daily_sum_row, annual_sum_row, total_sum_row], columns=all_data.columns)
     final_df = pd.concat([all_data, summary_df], ignore_index=True)
 
-    # --- Kostnadstabell ---
     df_cost = pd.DataFrame({
         'Year': np.arange(1, Y + 1),
         'Annual_shifted_MWh': annual_MWh_list,
@@ -240,7 +215,7 @@ def battery_opex_by_year(
     })
     df_cost['PV_Annual_cost'] = df_cost['Annual_cost_NOK'] / ((1 + disc_rate) ** (df_cost['Year'] - 1))
 
-    # Totalsummer
+    
     total_cost_row = pd.DataFrame({
         'Year': ['TOTAL'],
         'Annual_shifted_MWh': [sum(annual_MWh_list)],
@@ -249,7 +224,7 @@ def battery_opex_by_year(
     })
     df_cost = pd.concat([df_cost, total_cost_row], ignore_index=True)
 
-    # --- Konsoll ---
+   
     print("\n[Oppg.7] Årlige driftskostnader (Alt.B, 20 like dager/år):")
     print(
         df_cost.to_string(
@@ -261,18 +236,17 @@ def battery_opex_by_year(
         )
     )
 
-    # --- Skriv til Excel ---
+  
     with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
         final_df.to_excel(writer, sheet_name='Shifted_matrix', index=False)
         df_cost.to_excel(writer, sheet_name='Annual_summary', index=False)
 
-    print(f"\n✅ Ferdig! All data skrevet til: {excel_file}")
+    print(f"\nFerdig! All data skrevet til: {excel_file}")
     return df_cost
 
 
 def eens_altA(comp_df, main_type_like='Overhead line', L_km=20.0, unit='per_100_km_year',
               avg_load_year1_mw=1.841, g=growth, Y=years_hor):
-    # finn riktig rad (robust mot ulike bindestreker)
     idx = [i for i in comp_df.index if main_type_like in i]
     if not idx: raise ValueError("Fant ikke linjetype for 1–22 kV.")
     row = comp_df.loc[idx[0]]
@@ -388,29 +362,24 @@ def pv_year_table_altA(
 def pv_year_table_altB(
     df_cens_B: pd.DataFrame,
     opex_B: pd.DataFrame,
-    PVcorr_B: float,          # corrected PV of deferred investment (incl. residual)
+    PVcorr_B: float,          
     years: int = 10,
-    invest_year: int = 10,    # deferred investment at beginning of year 10 → row "10"
+    invest_year: int = 10,  
 ):
-    """
-    10-year table in PV for Alternative B.
-    Columns are PV cash flows as-of year 0:
-      Year | Investment (PV, corrected incl. residual) | OPEX (PV) | Interruption (PV)
-    """
+
     idx = pd.Index(range(1, years+1), name="Year")
 
     invest_pv = pd.Series(0.0, index=idx)
     if 1 <= invest_year <= years:
-        invest_pv.loc[invest_year] = float(PVcorr_B)  # already corrected for residual value
+        invest_pv.loc[invest_year] = float(PVcorr_B) 
 
-    # OPEX PV per year (from your opex_B['PV_Annual_cost'])
+    
     opex_pv = (
         opex_B.set_index("Year")["PV_Annual_cost"]
         .reindex(idx, fill_value=0.0)
         .astype(float)
     )
 
-    # Interruption PV per year with battery
     cens_pv = (
         df_cens_B.set_index("Year")["PV_CENS_with_batt_NOK"]
         .reindex(idx, fill_value=0.0)
@@ -424,7 +393,7 @@ def pv_year_table_altB(
         "Interruption (PV) [NOK]": cens_pv.values,
     })
 
-    # Totals (PV)
+   
     total_pv = table[["Investment (PV) [NOK]", "Operational (PV) [NOK]", "Interruption (PV) [NOK]"]].sum()
     total_row = pd.DataFrame([{
         "Year": "TOTAL (PV)",
@@ -445,59 +414,9 @@ def pv_year_table_altB(
 
     return table_out, total_cost_altB
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.DataFrame,
                                        years: int = 10):
-    """
-    Plot cumulative PV costs for Alternative A and B.
-    - Time axis from 0 to years-1
-    - Y-axis starts at 0
-    - Labels with background boxes for clarity
-    - Δ arrow and labels shifted slightly left for visibility
-    """
 
-    # 📊 Seaborn style
     sns.set_style("whitegrid")
     plt.rcParams.update({
         "font.size": 12,
@@ -512,7 +431,7 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
         tmp["Year_num"] = pd.to_numeric(tmp["Year"], errors="coerce")
         tmp = tmp.dropna(subset=["Year_num"])
         tmp = tmp[tmp["Year_num"].between(1, years)].sort_values("Year_num")
-        tmp["t"] = tmp["Year_num"] - 1  # year 1 → 0
+        tmp["t"] = tmp["Year_num"] - 1 
         cols = ["Investment (PV) [NOK]", "Operational (PV) [NOK]", "Interruption (PV) [NOK]"]
         tmp["PV_cost_year"] = tmp[cols].sum(axis=1)
         x = tmp["t"].astype(int).values
@@ -524,7 +443,6 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
         y_step = np.append(y, y[-1] if len(y) else 0.0)
         return x_step, y_step
 
-    # 📈 Cumulative cost calculation
     xA, yA = per_year_pv(table_A_pv, years)
     xB, yB = per_year_pv(table_B_pv, years)
     yA_cum = np.cumsum(yA)
@@ -534,7 +452,6 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
 
     fig, ax = plt.subplots(figsize=(11, 6))
 
-    # 📉 Step plot
     ax.step(xA_s, yA_s, where="post", lw=2.5, label="Alternative A", color="#1f77b4")
     ax.step(xB_s, yB_s, where="post", lw=2.5, ls="--", label="Alternative B", color="#ff7f0e")
 
@@ -544,17 +461,14 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
     ax.legend(frameon=True, loc="upper left")
     sns.despine()
 
-    # 🧭 Y-axis starts at 0
     ymin = 0
     ymax = max(yA_cum[-1], yB_cum[-1]) * 1.1
     ax.set_ylim(ymin, ymax)
 
-    # 🪄 Time axis
     ax.set_xticks(range(0, years))
     ax.set_xticklabels([str(i) for i in range(0, years)])
 
-    # 📍 Label and Δ slightly shifted left
-    shift_x = years - 0.6   # slightly before the last step
+    shift_x = years - 0.6 
     box_props = dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8)
 
     ax.text(shift_x, yA_cum[-1],
@@ -569,7 +483,6 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
             fontsize=12, color="#ff7f0e",
             bbox=box_props)
 
-    # ➕ Δ arrow also shifted left
     diff = abs(yA_cum[-1] - yB_cum[-1])
     y_min = min(yA_cum[-1], yB_cum[-1])
     y_max = max(yA_cum[-1], yB_cum[-1])
@@ -597,46 +510,36 @@ def plot_cumulative_pv_costs_altA_altB(table_A_pv: pd.DataFrame, table_B_pv: pd.
     plt.show()
 
 
-# %% Oppgave 2 – vis behov for tiltak ved start år 2
 show_need_measure(P_max0, P_lim)
 
-# %% Oppgave 3 – investeringskostnad Alt.A (FeAl 35 → FeAl 70). Kost kun for ny linje.
-# Tabellen bruker type-navn som for FeAl 70 ≈ "111-AL1/19-ST1A (FeAl nr. 70 6/1)"
+
 type_FeAl70 = '111-AL1/19-ST1A (FeAl nr. 70 6/1)'
 cost_A = inv_cost_A(data_lines, type_FeAl70, length_km)
 
-# %% Oppgave 4 – nåverdi (tiltak ved begynnelsen av år 2 → t=1)
 PV_A = pv(cost_A, disc_rate, t=1)
 
-# %% Oppgave 5 – restverdi og korrigert nåverdi (livsløp 40 år, analyse 20 år)
 
 PVcorr_A, PVinv_A, PVres_A = pv_corrected(cost_A, disc_rate, t=1, life=invest_life, horiz=plan_hor)
 print(f"\n[Oppg.5] Restverdi etter {plan_hor} år: {PVres_A:,.0f} NOK | PV(inv): {PVinv_A:,.0f}")
 print(f"[Oppg.5] Korrigert nåverdi: {PVcorr_A:,.0f} NOK")
 
-# %% Oppgave 6 – batteri utsetter forsterkning til start år 10 (y=9) og reduserer PV
 y_no, y_bt = compare_with_battery(P_max0, P_lim, g=growth, Y=years_hor, batt_shift_MW=1.0)
 print(f"\n[Oppg.6] Uten batteri: grense passeres ved år {y_no}. Med batteri: ved år {y_bt} ⇒ forsterkning utsettes til start år 10 (y=9).")
-# Korrigert nåverdi hvis investeringen flyttes til begynnelsen av år 10 (t=9)
+
 PVcorr_B, PVinv_B, PVres_B = pv_corrected(cost_A, disc_rate, t=9, life=40, horiz=20)
 print(f"[Oppg.6] Restverdi etter {plan_hor} år: {PVres_B:,.0f} NOK | PV(inv): {PVinv_B:,.0f}")
 print(f"[Oppg.6] Korrigert nåverdi: {PVcorr_B:,.0f} NOK")
 print(f"[Oppg.6] Reduksjon i korrigert nåverdi ved utsettelse: {(PVcorr_A - PVcorr_B):,.0f} NOK")
 
-# %% Oppgave 7 – årlige driftskostnader for batteriflex (bruk 28. feb (24t) som representativ, 20 dager/år)
 opex_B = battery_opex_by_year(agg_area, P_lim=P_lim, g=growth, batt_MW=1.0,
                               nok_per_MWh=2000.0, days=20, Y=years_hor, reinforce_at=9)
 
-# %% Oppgave 8 – EENS Alt.A (permanente feil, samme feilrate før/etter)
 df_eens_A = eens_altA(data_comprel, main_type_like='Overhead line', L_km=length_km,
                       unit='per_100_km_year', avg_load_year1_mw=1.841, g=growth, Y=years_hor)
 
-# %% Oppgave 9 – CENS Alt.A
 df_cens_A = cens_A(data_lp, bus_i_subset, df_eens_A)
 
-# %% Oppgave 10 – CENS Alt.B med batteri 1 MW / 2 MWh
 df_cens_B = cens_B_with_battery(df_eens_A, data_lp, bus_i_subset, batt_P_MW=1.0, batt_E_MWh=2.0)
-
 
 print("\n=== Oppg. 12 og 13: Socio-økonomisk total PV for Alt. A og Alt. B ===")
 

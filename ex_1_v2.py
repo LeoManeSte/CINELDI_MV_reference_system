@@ -1,6 +1,9 @@
 from math import exp
 import matplotlib.pyplot as plt
 import numpy as np
+import math
+import numpy as np
+
 
 def make_load_profile_ewh(time_steps,P,T,S,T_a,C,R,T_min,T_max, P_m,t_act,S_act):
     """
@@ -166,10 +169,6 @@ def simulate_ewh(
     return result
 
 def analyze_shift(result):
-    """
-    Finn hvor lenge lasten er forskjøvet og beregn energien (kWh).
-    Håndterer både tidligere og senere lastforskyvning.
-    """
 
     P_base = result["per_ewh"][0]["P_base"]
     P_flex = result["per_ewh"][0]["P"]
@@ -181,7 +180,6 @@ def analyze_shift(result):
         print("Ingen aktivering satt.")
         return
 
-    # --- Finn start/slutt for base og flex ---
     try:
         t_base_on = np.where(P_base[t_act:] > 0)[0][0] + t_act
         print(f"t_base_on: {t_base_on}")
@@ -198,9 +196,8 @@ def analyze_shift(result):
     except IndexError:
         t_flex_off = len(P_flex)
 
-    # --- Sjekk forskyvningstype ---
+
     if t_base_on is not None and t_base_on > t_act:
-        # Tidlig: fleks starter før baseline
         shift_type = "tidligere"
         tol = 1e-8
         try:
@@ -215,7 +212,6 @@ def analyze_shift(result):
         area_y1 = P_flex[t_act:t_base_on]
         area_y2 = P_base[t_act:t_base_on]
     else:
-        # Sen: baseline varer lenger enn fleks
         shift_type = "senere"
         delay = t_base_off - t_flex_off
         energy_shifted = np.trapz(P_base[t_act:t_base_off-1], dx=1/600)
@@ -223,10 +219,8 @@ def analyze_shift(result):
         area_y1 = P_base[t_act:t_base_off]
         area_y2 = P_flex[t_act:t_base_off]
 
-    # --- Plot ---
     fig, ax1 = plt.subplots(figsize=(10, 6))
 
-    # Temperatur
     h_T_base, = ax1.plot(T_base, "r--")
     h_T, = ax1.plot(T_flex, "r")
     ax1.set_ylim(ymin=min(T_base.min(), T_flex.min()) * 0.95,
@@ -236,14 +230,13 @@ def analyze_shift(result):
     ax1.tick_params(axis="y", labelcolor="tab:red")
     ax1.axvline(t_act, color="black", linestyle=":", label="Activation")
 
-    # Effekt
+
     ax2 = ax1.twinx()
     h_P_base, = ax2.plot(P_base, color="tab:blue", linestyle="dashed")
     h_P, = ax2.plot(P_flex, color="tab:blue")
     ax2.set_ylabel("Power (kW)", color="tab:blue")
     ax2.tick_params(axis="y", labelcolor="tab:blue")
 
-    # Skygge lagt areal
     h_area = ax2.fill_between(
         area_x,
         area_y1,
@@ -252,7 +245,6 @@ def analyze_shift(result):
         label="Shifted energy"
     )
 
-    # Tekst
     ax1.text(
         0.2, 0.95,
         f"Service Duration: {delay-1} min\n"
@@ -263,7 +255,6 @@ def analyze_shift(result):
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.7)
     )
 
-    # Legend
     ax1.legend([h_T_base, h_T, h_P_base, h_P, h_area],
                ["Temp baseline", "Temp flex", "Power baseline", "Power flex", "Shifted energy"],
                loc="upper right")
@@ -272,33 +263,17 @@ def analyze_shift(result):
     plt.tight_layout()
     plt.show()
 
-import matplotlib.pyplot as plt
 
 def plot_flexibility_activation(result, zoom_range=None):
-    """
-    Plot fleksibilitetsaktivering (kW) som differansen P_flex - P_base.
-    Viser både aktivering (under null) og rebound-effekt (over null).
-
-    Parameters
-    ----------
-    result : dict
-        Resultatstruktur med P_base, P_flex og t_act.
-    zoom_range : tuple (start, stop), optional
-        Tidsintervall (indeks) for zoom i subplot 2.
-        Eks: zoom_range=(100, 200).
-    """
 
     P_base = result["per_ewh"][0]["P_base"]
     P_flex = result["per_ewh"][0]["P"]
     t_act = result["params"]["t_act"]
 
-    # Differanse mellom fleksibel og baseline last
     flex_signal = P_base - P_flex 
 
-    # --- Plot ---
     fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharey=True)
 
-    # --- Hele signalet ---
     axes[0].plot(flex_signal, color="tab:green", linewidth=2,
                  label="Flexibility Characteristic")
     axes[0].axhline(0, color="black", linestyle=":", label="Base Case")
@@ -328,47 +303,17 @@ def plot_flexibility_activation(result, zoom_range=None):
     plt.tight_layout()
     plt.show()
 
-import math
-import matplotlib.pyplot as plt
-import numpy as np
-
-import math
-import matplotlib.pyplot as plt
-import numpy as np
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-import matplotlib.pyplot as plt
 
 def plot_flexibility_activation(result, zoom_range=None):
-    """
-    Plot fleksibilitetsaktivering (kW) som differansen P_flex - P_base.
-    Viser både aktivering (under null) og rebound-effekt (over null).
-
-    Parameters
-    ----------
-    result : dict
-        Resultatstruktur med P_base, P_flex og t_act.
-    zoom_range : tuple (start, stop), optional
-        Tidsintervall (indeks) for zoom i subplot 2.
-        Eks: zoom_range=(100, 200).
-    """
 
     P_base = result["per_ewh"][0]["P_base"]
     P_flex = result["per_ewh"][0]["P"]
     t_act = result["params"]["t_act"]
 
-    # Differanse mellom fleksibel og baseline last
     flex_signal = P_base - P_flex 
 
-    # --- Plot ---
     fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharey=True)
 
-    # --- Hele signalet ---
     axes[0].plot(flex_signal, color="tab:green", linewidth=2,
                  label="Flexibility Characteristic")
     axes[0].axhline(0, color="black", linestyle=":", label="Base Case")
@@ -381,7 +326,6 @@ def plot_flexibility_activation(result, zoom_range=None):
     axes[0].legend()
     axes[0].grid(True)
 
-    # --- Zoomet inn på valgt tidsintervall ---
     axes[1].plot(flex_signal, color="tab:green", linewidth=2)
     axes[1].axhline(0, color="black", linestyle=":")
     if t_act is not None and zoom_range is not None and zoom_range[0] <= t_act <= zoom_range[1]:
@@ -400,43 +344,17 @@ def plot_flexibility_activation(result, zoom_range=None):
 
 
 def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
-    """
-    Run simulations for different activation times and quantify
-    the power capacity flexibility of EWHs.
-
-    For each t_act, two plots are generated:
-    - ΔP over time
-    - Baseline vs flexible load
-
-    The plots are arranged in a grid (2 subplots per t_act).
-
-    Parameters
-    ----------
-    t_act_values : list of ints
-        Activation times in minutes.
-    ncols : int
-        Number of subplot columns (default=2).
-    kwargs : dict
-        Extra parameters for simulate_ewh.
-
-    Returns
-    -------
-    dict
-        Dictionary with results for each t_act.
-    """
-
     results = {}
 
-    # Color cycle for consistency
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    n_plots = len(t_act_values) * 2   # 2 subplot per t_act
+    n_plots = len(t_act_values) * 2   
     nrows = math.ceil(n_plots / ncols)
 
     fig, axes = plt.subplots(
         nrows, ncols, figsize=(6*ncols, 4*nrows), sharex=False
     )
-    axes = np.array(axes).reshape(-1)  # flatten til liste
+    axes = np.array(axes).reshape(-1)  
 
     for idx, t_act in enumerate(t_act_values):
         result = simulate_ewh(
@@ -450,13 +368,13 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
         P_base = result["P_agg_base"]
         P_flex = result["P_agg"]
 
-        # Flexibility potential = reduction
+
         deltaP = P_base - P_flex
 
-        # Quantify capacity at activation time
+
         flex_capacity = deltaP[t_act]
 
-        # Average over 30 min after activation
+ 
         window = 30
         flex_avg = np.mean(deltaP[t_act:t_act+window])
 
@@ -469,7 +387,6 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
 
         c = color_cycle[idx % len(color_cycle)]
 
-        # --- subplot for ΔP ---
         ax1 = axes[2*idx]
         ax1.plot(deltaP, label=f"ΔP (t_act={t_act} min)", color=c)
         ax1.set_ylabel("ΔP (kW)")
@@ -477,7 +394,6 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
         ax1.grid(True)
         ax1.legend()
 
-        # --- subplot for baseline + flex ---
         ax2 = axes[2*idx + 1]
         ax2.plot(P_base, color='black',linestyle = ":", alpha=1, label="Baseline")
         ax2.plot(P_flex, color=c, label=f"Flex (t_act={t_act} min)")
@@ -486,7 +402,7 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
         ax2.grid(True)
         ax2.legend()
 
-    # Fjern tomme ruter hvis n_plots < nrows*ncols
+   
     for j in range(n_plots, len(axes)):
         fig.delaxes(axes[j])
 
@@ -494,7 +410,6 @@ def quantify_capacity_flexibility(t_act_values, ncols=2, **kwargs):
     plt.show()
 
     return results
-
 
 
 t_act_values = [320, 580, 900]  # 13:20, 16:00, 18:20
@@ -513,7 +428,6 @@ results = quantify_capacity_flexibility(
     time_steps=24*60,
     seed=123
 )
-
 
 
 #  Når temperaturen når T_min skrus EWH på, og når den
