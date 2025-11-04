@@ -65,7 +65,8 @@ model.price = pyo.Param(model.T, initialize=dict_Prices)
 model.base  = pyo.Param(model.T, initialize=dict_Base_load)
 model.pv    = pyo.Param(model.T, initialize=dict_PV_prod)
 
-Pcap = 10000 # large value to ensure no constraints are violated
+
+Pcap = 1000 # large value to ensure no constraints are violated
 # Vars
 model.P_ch   = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, charging_power_limit))
 model.P_dis  = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, discharging_power_limit))
@@ -74,10 +75,25 @@ model.P_imp  = pyo.Var(model.T, domain=pyo.NonNegativeReals, bounds=(0.0, Pcap))
 model.P_exp  = pyo.Var(model.T, domain=pyo.NonNegativeReals)  # grid export
 
 
-# ensure power to grid * power from grid = 0
-model.no_simultaneous_grid = pyo.ConstraintList()
-for t in model.T:
-    model.no_simultaneous_grid.add(model.P_imp[t] * model.P_exp[t] == 0)
+## ensure power to grid * power from grid = 0
+#model.no_simultaneous_grid = pyo.ConstraintList()
+#for t in model.T:
+#    model.no_simultaneous_grid.add(model.P_imp[t] * model.P_exp[t] == 0)
+
+# --- Binary variable for import/export mode ---
+model.y = pyo.Var(model.T, within=pyo.Binary)  # 1 = import, 0 = export
+
+M = Pcap  # big-M value (upper bound for grid flow)
+
+# --- Linearized no simultaneous import/export constraint ---
+def imp_limit_rule(m, t):
+    return m.P_imp[t] <= M * m.y[t]
+
+def exp_limit_rule(m, t):
+    return m.P_exp[t] <= M * (1 - m.y[t])
+
+model.imp_limit = pyo.Constraint(model.T, rule=imp_limit_rule)
+model.exp_limit = pyo.Constraint(model.T, rule=exp_limit_rule)
 
 
 # Effektbalanse hver time: last = PV + utlad + import - lad - eksport
@@ -122,7 +138,9 @@ res_df = pd.DataFrame({
     'Price': [pyo.value(model.price[t]) for t in T],
     'Net_load_PV': [pyo.value(model.base[t] - model.pv[t]) for t in T],
     'Net_load_PV_Battery': [pyo.value(model.base[t] - model.pv[t] - model.P_dis[t] + model.P_ch[t]) for t in T],
+    'Objective': [pyo.value(model.cost) for t in T],
 })
+
 
 total_cost = res_df['Import'].dot(res_df['Price']) - res_df['Export'].dot(res_df['Price']*sell_price_factor)
 print(f"Total cost: {total_cost:.2f} (currency units)")
@@ -188,13 +206,13 @@ ax2.step(x, y, label="Price", where="post", color="black", linestyle="--", linew
 
 ax1.set_title("Battery operation and electricity price", fontsize=14, fontweight="bold")
 ax1.set_ylabel("Power [kW]", color="black")
-ax2.set_ylabel("Price [currency/kWh]", color="black")
+ax2.set_ylabel("Price [NOK/kWh]", color="black")
 ax1.set_xlabel("Hour")
 
 # Legender
 lines1, labels1 = ax1.get_legend_handles_labels()
 lines2, labels2 = ax2.get_legend_handles_labels()
-ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
 
 ax1.grid(True, linestyle="--", alpha=0.7)
 
@@ -204,7 +222,7 @@ for ax in axs:
     ax.tick_params(axis="both", labelsize=11)
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 
 # plot net load_profile with and without battery
@@ -236,7 +254,7 @@ x, y = stepify_centered(res_df["Hour"].values, res_df["Price"].values)
 ax2.step(x, y, label="Price", where="post", color="black", linestyle="--", linewidth=2)
 ax1.set_title("Battery State of Charge and Electricity Price", fontsize=14, fontweight="bold")
 ax1.set_ylabel("State of Charge [kWh]", color="black")
-ax2.set_ylabel("Price [currency/kWh]", color="black")
+ax2.set_ylabel("Price [NOK/kWh]", color="black")
 ax1.set_xlabel("Hour")
 # legender
 lines1, labels1 = ax1.get_legend_handles_labels()
@@ -265,3 +283,72 @@ else:
 
 # assert actual total efficiency of bettery
 assert np.isclose(energy_efficiency, charging_efficiency * discharging_efficiency, atol=1e-4), "Energy efficiency does not match expected value."
+
+# lag et plott med bare charge og discharge og pris på annen akse
+
+fig, ax1 = plt.subplots(figsize=(14, 6))
+ax2 = ax1.twinx()
+x, y = stepify_centered(res_df["Hour"].values, res_df["P_ch"].values)
+ax1.step(x, y, label="Charging", where="post", color="tab:blue", linewidth=2)
+x, y = stepify_centered(res_df["Hour"].values, res_df["P_dis"].values)
+ax1.step(x, y, label="Discharging", where="post", color="tab:orange", linewidth=2)
+x, y = stepify_centered(res_df["Hour"].values, res_df["Price"].values)
+ax2.step(x, y, label="Price", where="post", color="black", linestyle="--", linewidth=2)
+ax1.set_title("Battery Charging/Discharging and Electricity Price", fontsize=14, fontweight="bold")
+ax1.set_ylabel("Power [kW]", color="black")
+ax2.set_ylabel("Price [NOK/kWh]", color="black")
+ax1.set_xlabel("Hour")
+# legender
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+ax1.grid(True, linestyle="--", alpha=0.7)
+# layout
+ax1.set_xlim(0, 24)  # dekker [0.0, 24.0]
+ax1.tick_params(axis="both", labelsize=11)
+plt.tight_layout()
+#plt.show()
+
+
+# save net load profile with and without battery to csv file
+res_df.to_csv('Load_profile_task7.csv', index=False)
+# %%
+
+# function to read from two csv files and plot the net load profiles in one plot and without battery
+def plot_net_load_profiles(file1, file2):
+    df1 = pd.read_csv(file1)
+    df2 = pd.read_csv(file2)
+    
+    plt.figure(figsize=(14, 6))
+
+    # without battery
+    x, y = stepify_centered(df1["Hour"].values, df1["Net_load_PV"].values)
+    plt.step(x, y, label="Net load without battery", where="post", color="tab:blue", linewidth=2)
+
+    x, y = stepify_centered(df1["Hour"].values, df1["Net_load_PV_Battery"].values)
+    plt.step(x, y, label="Net load with battery ($P_{cap} = \\infty$)", where="post", color="tab:orange", linewidth=2)   
+    x, y = stepify_centered(df2["Hour"].values, df2["Net_load_PV_Battery"].values)
+    plt.step(x, y, label="Net load with battery ($P_{cap}$ = 6 kW)", where="post", color="tab:green", linewidth=2)
+
+    plt.title("Net load profile with battery from two exercises", fontsize=14, fontweight="bold")
+    plt.ylabel("Power [kW]")
+    plt.xlabel("Hour")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(0, 24)  # dekker [0.0, 24.0]
+    plt.ylim(min(0, min(df1["Net_load_PV_Battery"].min(), df2["Net_load_PV_Battery"].min()) - 1), 
+             max(df1["Net_load_PV_Battery"].max(), df2["Net_load_PV_Battery"].max()) + 1) 
+    plt.xticks(np.arange(0, 25, step=1))
+    plt.yticks(np.arange(0, max(df1["Net_load_PV_Battery"].max(), df2["Net_load_PV_Battery"].max()) + 1, step=1))
+    plt.tight_layout()
+    plt.show()
+
+
+# call the function with the two csv files
+plot_net_load_profiles('Load_profile_task4.csv', 'Load_profile_task7.csv')
+
+# print ut objective value from both files
+df1 = pd.read_csv('Load_profile_task4.csv')
+df2 = pd.read_csv('Load_profile_task7.csv')
+print(f"Objective value from task 4 (no Pcap limit): {df1['Objective'].iloc[0]:.2f} (currency units)")
+print(f"Objective value from task 7 (with Pcap limit): {df2['Objective'].iloc[0]:.2f} (currency units)")

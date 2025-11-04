@@ -52,6 +52,49 @@ net = ppcsv.read_net_from_csv(path_data_set, baseMVA=10)
 
 pp.runpp(net,init='results',algorithm='bfsw')
 
+def writeVoltagesToExcel(net, filename, base_voltage_kV=12.66):
+    """
+    Skriver ut spenninger (magnitude og vinkel) for alle busser i pandapower-nett til en Excel-fil.
+    
+    Parameters
+    ----------
+    net : pandapowerNet
+        Nettverket du har kjørt kraftflyt på.
+    filename : str
+        Navnet på Excel-filen som skal lagres (f.eks. 'bus_voltages.xlsx').
+    base_voltage_kV : float
+        Basespenning for omregning til Volt. Default 12.66 kV.
+    """
+    import pandas as pd
+    import numpy as np
+
+    # Sørg for at lastflyt er kjørt
+    if net.res_bus.empty:
+        raise ValueError("Power flow results (net.res_bus) er tomt. Kjør pp.runpp(net) først.")
+
+    bus_numbers = net.bus.index.tolist()
+    voltage_magnitudes = net.res_bus['vm_pu'].tolist()
+    voltage_angles = net.res_bus['va_degree'].tolist()
+
+    # Omregning til V (linjespenning)
+    voltage_V = [v * base_voltage_kV * 1000 for v in voltage_magnitudes]
+
+    df = pd.DataFrame({
+        'Bus': bus_numbers,
+        'Voltage (p.u.)': voltage_magnitudes,
+        f'Voltage (V) @ {base_voltage_kV} kV base': voltage_V,
+        'Angle (deg)': voltage_angles
+    })
+
+    df.to_excel(filename, index=False)
+    print(f"✅ Spenningsdata for {len(bus_numbers)} busser skrevet til '{filename}'")
+
+
+# Skriv resultater til Excel-fil
+writeVoltagesToExcel(net, 'bus_voltages.xlsx', base_voltage_kV=22.0)
+
+
+
 print('Total load demand in the system assuming a peak load model: ' + str(net.res_load['p_mw'].sum()) + ' MW')
 
 # %% Plot results of power flow calculations
@@ -332,3 +375,5 @@ feeder_info = plot_longest_feeder_with_controls(net)
 ## plot feeder info
 #for info in feeder_info:
 #    print(f"Feeder to {info['end_name']} (length {info['length']}): min voltage {info['min_voltage']:.4f} p.u. at bus {info['min_bus']}")
+
+

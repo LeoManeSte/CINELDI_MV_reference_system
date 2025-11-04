@@ -94,8 +94,8 @@ def read_net_from_csv(folder, baseMVA=10, DiB_version = True):
                 min_vm_pu = bus.loc[i_bus,'min_Vm']            
             else:
                 min_vm_pu = bus.loc[i_bus,'Vmin']            
-            Pd = bus.loc[i_bus,'Pd']
-            Qd = bus.loc[i_bus,'Qd']
+            Pd = bus.loc[i_bus,'Pd'] # Active power demand in MW
+            Qd = bus.loc[i_bus,'Qd'] # Reactive power demand in MVAr
 
             # Fix problem with decimal operators ',' used in the .csv file
             if type(vn_kv) == str:
@@ -201,6 +201,7 @@ def read_net_from_csv(folder, baseMVA=10, DiB_version = True):
         # Converting charging susceptance from p.u. to ohm
         omega = math.pi * f_hz  # 1/s
         c_nf_per_km = b/Zni/omega*1e9/2
+        #c_nf_per_km = 0
 
         # Adding line to network
         pp.create_line_from_parameters(net, from_bus=f_bus, to_bus=t_bus, length_km=length_km, r_ohm_per_km = r_ohm, x_ohm_per_km = x_ohm, c_nf_per_km = c_nf_per_km, max_i_ka = max_i_ka, in_service=br_status)
